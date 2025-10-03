@@ -1,0 +1,461 @@
+---
+title: "DESeq EDA"
+author: "Sean Taylor and Glenn Morton, updated by Emma Wrenn 25-4-9"
+date: "`r Sys.Date()`"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+params:
+  root_dir: "/Volumes/Active/lawlor_e/Emma/TGFB_FIGURES/R_code/CLEAN_CODE_BULK/deseq_bulk_tgfb/star"
+  output_dir: "results/"
+  saveRes: FALSE
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, eval=TRUE, include=TRUE, message=FALSE)
+root.dir = paste0(params$root_dir, "/")
+knitr::opts_knit$set(root.dir = root.dir)
+
+library(knitr)
+library(pander)
+library(tidyverse)
+library(org.Hs.eg.db)
+library(DESeq2)
+library(viridis)
+library(pheatmap)
+
+
+saveRes <- params$saveRes
+```
+
+
+
+```{r}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+
+#Set figure outputs
+knitr::opts_chunk$set(dpi=300,
+                      echo=TRUE, warning=FALSE, message=FALSE)
+knitr::opts_chunk$set(dev.args=list(bg="transparent"))
+knitr::opts_chunk$set(fig.path = "~/deseq_24-059/figs/EDAR",  dev = c("svglite", "png", "pdf"))
+```
+
+
+```{r genes of interest}
+caf_genes_ens <- c("ENSG00000135318",
+"ENSG00000182492",
+"ENSG00000145349",
+"ENSG00000135404",
+"ENSG00000108821",
+"ENSG00000164692",
+"ENSG00000204262",
+"ENSG00000142173",
+"ENSG00000164733",
+"ENSG00000101160",
+"ENSG00000134531",
+"ENSG00000166147",
+"ENSG00000163430",
+"ENSG00000136235",
+"ENSG00000100600",
+"ENSG00000138119",
+"ENSG00000116962",
+"ENSG00000189129",
+"ENSG00000168938",
+"ENSG00000150687",
+"ENSG00000197747",
+"ENSG00000163191",
+"ENSG00000189171",
+"ENSG00000271853",
+"ENSG00000196154",
+"ENSG00000113140",
+"ENSG00000140682",
+"ENSG00000154096",
+"ENSG00000041982")
+
+caf_genes <- c("NT5E",
+"BGN",
+"CAMK2D",
+"CD63",
+"COL1A1",
+"COL1A2",
+"COL5A2",
+"COL6A2",
+"CTSB",
+"CTSZ",
+"EMP1",
+"FBN1",
+"FSTL1",
+"GPNMB",
+"LGMN",
+"MYOF",
+"NID1",
+"PLAC9",
+"PPIC",
+"PRSS23",
+"S100A10",
+"S100A11",
+"S100A13",
+"S100A4",
+"SPARC",
+"TGFB1I1",
+"THY1",
+"TNC")
+
+fave_caf_genes <- c("ENSG00000135318", "ENSG00000108821", "ENSG00000164692", "ENSG00000041982", "ENSG00000113140", "ENSG00000182492", "ENSG00000164733")
+```
+
+```{r}
+library("here")
+```
+
+
+# Organize metadata
+
+## Organizing sample metadata
+
+Point the `root_dir` parameter to the repo folder for the Nextflow workflow.
+To that directory, add `resources/sampledata.csv`. It is required to have the following column headers:
+
+**sample_id,sample_name,cell_line,condition,treatment ,batch**
+
+* The sample_id needs to match the folder name of the sample fastq files in `resources/fastq`
+* sample_name taken from the "id" field in the Nextflow sample sheet, as this is used to name the output files.
+* cell_line, condition, and treatment are used for the contrasts
+  * the possible values need to be defined in order in the factors variable with the control level listed first 
+* batch is a string that could be used to determine batch effects
+
+```{r metadata}
+# control level needs to be first
+factors <- list(cell_line=c("TC71", "A673", "CHLA10", "PDX305"), # cell_line
+                condition=c("vehicle", "TGFB1", "TGFB2", "Vacto 1uM") # condition
+)
+
+# define design based on names(factors)
+f <- ~ treatment + cell_line
+
+
+# define a few key genes for sanity check
+gene_names <- c("ENSG00000120708", "ENSG00000041982") #TGFBI, TNC
+
+
+```
+
+```{r make coldata table}
+getwd()
+
+coldata <- read.csv(here("sampledata_all.csv"), as.is=c(TRUE, TRUE, TRUE, TRUE, TRUE, FALSE))
+coldata <- data.frame(lapply(coldata, trimws), stringsAsFactors = FALSE)
+
+
+samples <- coldata$sample_id
+gquery <- "(.+)"
+
+
+datapaths <- data.frame(countfile = file.path(params$root_dir, gsub(gquery, "\\1.ReadsPerGene.out.tab", samples)),
+                        bamfile = file.path(params$root_dir, gsub(gquery, "\\1.Aligned.sortedByCoord.out.bam", samples)),
+                        sample_id = samples,
+                        stringsAsFactors = FALSE)
+  
+coldata <- dplyr::left_join(coldata, datapaths, by="sample_id")
+
+for(i in (names(factors))) {
+  coldata[i] <- lapply(coldata[i], factor, levels = factors[[i]])
+}
+
+coldata
+
+```
+
+## Organizing gene metadata
+Importing useful annotation data, from the GTF used by STAR, for easy identification of genes and displaying the top 6 rows of each annotation retrieved...
+
+
+```{r rowranges gtf}
+rowRangesAll <- rtracklayer::import(here("genes.gff3"))
+
+rowRanges <- rowRangesAll[rowRangesAll$type == "gene"]
+mcols(rowRanges) <- mcols(rowRanges)[,c("source", "ID", "Alias", "external_name", "Name", "biotype", "gene_id")]
+
+
+
+```
+
+
+
+
+## Organizing count matrix
+
+Assuming unstranded library prep.
+
+```{r count matrix, message=FALSE}
+counts<- lapply(setNames(coldata$countfile, coldata$sample_id), function(file) {
+  table <- read.csv(file, sep="\t", stringsAsFactors = FALSE,skip = 4, header = FALSE, 
+                    col.names = c("geneID", "unstranded", "r1StrandAligned", "r2StrandAligned")) %>% 
+    dplyr::select(geneID, unstranded)
+})
+
+counts<- plyr::join_all(counts, by="geneID", type="left") %>%
+  tibble::column_to_rownames("geneID") 
+colnames(counts) <- coldata$sample_id
+
+head(counts)
+```   
+```{r}
+write.csv(counts, file=here("lapply_star_counts.csv"))
+```
+
+
+# Load Data
+
+## Create DESeq Data Set object
+
+```{r ddsfull, echo=TRUE}
+
+# generate full dataset
+ddsFull <- DESeqDataSetFromMatrix(countData = counts, 
+                                  colData = coldata, 
+                                  design = f)
+
+ddsFull
+```
+
+## Pre-filtering the dataset
+
+In order to reduce the size of the object, and to increase the speed of our functions, we can remove the rows that have no or nearly no information about the amount of gene expression. Here we apply the most minimal filtering rule: removing rows of the DESeqDataSet that have no counts, or only a single count across all samples. Additional weighting/filtering to improve power is applied at a later step in the workflow.
+
+```{r crop dds, echo=TRUE}
+nrow(ddsFull)
+keep <- rowSums(counts(ddsFull))>1
+dds <- ddsFull[keep,]
+nrow(dds)
+```
+
+
+# EDA
+
+## Normalization and dispersion estimation
+```{r rlog rld}
+dds <- estimateSizeFactors(dds)
+rld <- rlog(dds)
+table.out <- assay(rld)
+write.csv(table.out, file=here("TC71_A673_CHLA10_PDX305_rld.csv"))
+```
+
+# make csv with gene names
+
+
+```{r add gene name column}
+ens_id <- rownames(table.out)
+table.out <- as.data.frame(table.out)
+symb_id <- mapIds(org.Hs.eg.db, keys = ens_id, keytype = "ENSEMBL", column="SYMBOL")
+symb_id <- as.data.frame(symb_id)
+gene_table.out <- merge(table.out, symb_id, by='row.names')
+gene_table.out <- as.data.frame(gene_table.out)
+rownames(gene_table.out) <- gene_table.out$Row.names
+gene_table.out <-  dplyr::select(gene_table.out, "symb_id", everything())
+gene_table.out <-  gene_table.out[-2]
+write.csv(gene_table.out, file=here("TC71_A673_CHLA10_PDX305_rld_genenames.csv"))
+
+```
+
+
+```{r}
+gene_table.out_col <- gene_table.out
+colnames(gene_table.out_col)
+colnames(gene_table.out_col) <- c("symb_id", coldata$sample_name)
+colnames(gene_table.out_col)
+
+write.csv(gene_table.out_col, file=here("TC71_A673_CHLA10_PDX305_rld_genenames_colnames.csv"))
+
+```
+
+
+## Sample heatmap
+
+* This simple heat map explores the genes with highest expression and examines if any particular sample appears annomalous in terms of the count matrix. 
+    + It's important to use the normalized counts rather than raw counts, otherwise you might get a very distorted picture.
+    
+```{r reorder sample columns}
+table.out_reordered <- gene_table.out_col[,c("TC71_veh_1","TC71_veh_2","TC71_veh_3","TC71_TGFB1_1","TC71_TGFB1_2","TC71_TGFB1_3", "TC71_TGFB2_1","TC71_TGFB2_2","TC71_TGFB2_3","TC71_Vacto 1uM_1","TC71_Vacto 1uM_2","TC71_Vacto 1uM_3",
+                                             
+                                             "A673_veh_1","A673_veh_2","A673_veh_3","A673_TGFB1_1","A673_TGFB1_2","A673_TGFB1_3", "A673_TGFB2_1","A673_TGFB2_2","A673_TGFB2_3","A673_Vacto 1uM_1","A673_Vacto 1uM_2","A673_Vacto 1uM_3",
+                                             
+                                             "CHLA10_veh_1","CHLA10_veh_2","CHLA10_veh_3","CHLA10_TGFB1_1","CHLA10_TGFB1_2","CHLA10_TGFB1_3", "CHLA10_TGFB2_1","CHLA10_TGFB2_2","CHLA10_TGFB2_3","CHLA10_Vacto 1uM_1","CHLA10_Vacto 1uM_2","CHLA10_Vacto 1uM_3",
+                                             
+                                             "PDX305_veh_1","PDX305_veh_2","PDX305_veh_3","PDX305_TGFB1_1","PDX305_TGFB1_2","PDX305_TGFB1_3", "PDX305_TGFB2_1","PDX305_TGFB2_2","PDX305_TGFB2_3","PDX305_Vacto 1uM_1","PDX305_Vacto 1uM_2","PDX305_Vacto 1uM_3")]
+
+table.out_reordered_wid <- gene_table.out_col[,c("symb_id", "TC71_veh_1","TC71_veh_2","TC71_veh_3","TC71_TGFB1_1","TC71_TGFB1_2","TC71_TGFB1_3", "TC71_TGFB2_1","TC71_TGFB2_2","TC71_TGFB2_3","TC71_Vacto 1uM_1","TC71_Vacto 1uM_2","TC71_Vacto 1uM_3",
+                                             
+                                             "A673_veh_1","A673_veh_2","A673_veh_3","A673_TGFB1_1","A673_TGFB1_2","A673_TGFB1_3", "A673_TGFB2_1","A673_TGFB2_2","A673_TGFB2_3","A673_Vacto 1uM_1","A673_Vacto 1uM_2","A673_Vacto 1uM_3",
+                                             
+                                             "CHLA10_veh_1","CHLA10_veh_2","CHLA10_veh_3","CHLA10_TGFB1_1","CHLA10_TGFB1_2","CHLA10_TGFB1_3", "CHLA10_TGFB2_1","CHLA10_TGFB2_2","CHLA10_TGFB2_3","CHLA10_Vacto 1uM_1","CHLA10_Vacto 1uM_2","CHLA10_Vacto 1uM_3",
+                                             
+                                             "PDX305_veh_1","PDX305_veh_2","PDX305_veh_3","PDX305_TGFB1_1","PDX305_TGFB1_2","PDX305_TGFB1_3", "PDX305_TGFB2_1","PDX305_TGFB2_2","PDX305_TGFB2_3","PDX305_Vacto 1uM_1","PDX305_Vacto 1uM_2","PDX305_Vacto 1uM_3")]
+```
+    
+```{r}
+write.csv(table.out_reordered_wid, file=here("TACP_rlog_reordered_colname_genesymbol.csv"))
+```
+  
+
+
+```{r example heatmaps}
+library("pheatmap")
+
+#sanity check with known TGFB response gene TGFBI, COL1A1
+pheatmap(table.out_reordered[c("ENSG00000120708", "ENSG00000108821"),], cluster_rows=FALSE, show_rownames=TRUE,
+         cluster_cols=FALSE, main="Normalized counts, RLD transform", scale="row", color = inferno(100), border_color = NA)
+
+#sanity check with CAF-like genes induced by TGFBI
+pheatmap(table.out_reordered[fave_caf_genes,], cluster_rows=FALSE, show_rownames=TRUE,
+         cluster_cols=FALSE, main="Normalized counts, RLD transform", scale="row", color = inferno(100), border_color = NA)
+
+```
+
+## GSVA of CAF-signature
+
+```{r}
+library(GSVA)
+#library(qusage)
+```
+
+```{r}
+library(GSVA)
+gsvaPar <- gsvaParam(as.matrix(counts), list(caf_genes_ens))
+gsvaPar
+```
+```{r}
+gsva_es <- gsva(gsvaPar, verbose=TRUE)
+write.csv(gsva_es, file=here("CAF_signature_GSVA_scores.csv"))
+```
+
+
+## Heatmap of sample-to-sample distances
+
+* A heatmap of this distance matrix gives us an overview over similarities and dissimilarities between samples. 
+
+```{r sample sample distance, eval=TRUE, fig.height=8}
+library("RColorBrewer")
+
+sampleDists <- dist(t(assay(rld)))
+
+sampleDistMatrix <- as.matrix(sampleDists)
+rownames(sampleDistMatrix) <- paste(rld$sample_id, rld$cell_line, rld$experiment, rld$treatment, sep="_")
+colnames(sampleDistMatrix) <- NULL
+
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+
+pheatmap(sampleDistMatrix, clustering_distance_rows=sampleDists, 
+         clustering_distance_cols=sampleDists, col=colors)
+```
+
+## Principal component plot of the samples {.tabset .tabset-pills}
+
+* Related to the distance matrix is the PCA plot, which shows the samples in the 2D plane spanned by their first two principal components. 
+    + This type of plot is useful for visualizing the overall effect of experimental covariates and batch effects.
+
+* Things to look out for:
+    + Are there any correlations across your variables that you need to account for or that might be indicative of batch effects?
+    + Are there any outliers in any of your groupings that you cannot explain?
+    + Have you considered examing third, fourth, or 5th principle components for any underlying structures?
+
+### Overall
+```{r pca}
+pca <- plotPCA(rld, intgroup=names(factors))
+pca + geom_text(aes(label = rld$sample_id), nudge_y=3)
+```
+
+
+```{r pca by line, results='asis'}
+tmp <- lapply(unique(as.character(rld$cell_line)), function(x){
+  cat("###", x, " \n")
+  tmp <- rld[, rld$cell_line == x]
+  
+  pca <- plotPCA(tmp, intgroup=names(factors)) + ggtitle(x) + geom_text(aes(label = tmp$sample_id), nudge_y=3)
+  print(pca)
+  
+  cat(" \n \n") # print tabset spacer for proper formatting
+
+})
+```
+
+## Expression analysis {.tabset .tabset-pills}
+```{r tgfbi, results='asis'}
+
+#genes <- rowData(dds) %>% 
+#  as.data.frame() %>% 
+#  filter(gene_name %in% gene_names)
+
+#tmp <- lapply(gene_names, function(gene){
+#  cat("###", gene, " \n")
+  
+#  gene_id <- genes$gene_id[genes$gene_name==gene]
+  
+  data <- plotCounts(dds, gene="ENSG00000120708", intgroup=c(names(factors)), returnData = TRUE)
+  data$group <- paste(data$condition)
+  
+  
+  temp <- data %>%
+    group_by(condition, cell_line) %>%
+    summarize(mean=(mean(count)))
+  
+  p <- ggplot(data, aes(x = condition, y = log2(count))) +
+  
+    geom_line(aes(x=condition, y=mean, group=cell_line, color=cell_line), data=temp) +
+    ggtitle(paste("TGFBI Expression")) +
+    labs(y = quote((counts)))
+  
+  print(p)
+  
+
+```
+
+```{r tnc, results='asis'}
+
+
+#genes <- rowData(dds) %>% 
+#  as.data.frame() %>% 
+#  filter(gene_name %in% gene_names)
+
+#tmp <- lapply(gene_names, function(gene){
+#  cat("###", gene, " \n")
+  
+#  gene_id <- genes$gene_id[genes$gene_name==gene]
+  
+  data <- plotCounts(dds, gene="ENSG00000041982", intgroup=c(names(factors)), returnData = TRUE)
+  data$group <- paste(data$condition)
+  
+  
+  temp <- data %>%
+    group_by(condition, cell_line) %>%
+    summarize(mean=(mean(count)))
+  
+  p <- ggplot(data, aes(x = condition, y = log2(count))) +
+  
+    geom_line(aes(x=condition, y=mean, group=cell_line, color=cell_line), data=temp) +
+    ggtitle(paste("TNC Expression")) +
+    labs(y = quote((counts)))
+  
+  print(p)
+  
+
+```
+
+# Export results
+
+
+```{r save rds, eval=saveRes, echo=TRUE}
+
+  saveRDS(object=dds, file=(here("TC71_A673_CHLA10_PDX305_DESeqDataSet.rds")))
+
+```
+
+```{r}
+sessionInfo()
+```
+
+

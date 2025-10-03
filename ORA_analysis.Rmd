@@ -1,0 +1,74 @@
+---
+title: "TGFB1/2 treated 24hrs RNAseq ORA"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+editor_options: 
+  chunk_output_type: console
+params:
+---
+
+
+
+## Load packages
+
+```{r}
+#Set figure outputs
+library(here)
+knitr::opts_chunk$set(dpi=300,
+                      echo=TRUE, warning=FALSE, message=FALSE)
+knitr::opts_chunk$set(dev.args=list(bg="transparent"))
+knitr::opts_chunk$set(fig.path = here("figs", "ORA_"),  dev = c("svglite", "png", "pdf"))
+
+```
+
+```{r libraries}
+#load packages
+library(fgsea)
+library(data.table)
+library(ggplot2)
+library(clusterProfiler)
+library(msigdb)
+library(org.Hs.eg.db)
+library(magrittr)
+library(dplyr)
+library(enrichplot)
+library(here)
+library(ReactomePA)
+library(msigdbr)
+library(tidyverse)
+library(svglite)
+library(glue)
+library(here)
+```
+
+
+
+
+
+```{r  dot plot}
+ACP_TGFB1_up <- read.table(file=here("contrasts","ACP_T1_overlap_gene_names.txt"))
+ACP_TGFB1_up <- ACP_TGFB1_up$V1
+
+ACP_TGFB2_up <- read.table(file=here("contrasts","ACP_T2_overlap_gene_names.txt"))
+ACP_TGFB2_up <- ACP_TGFB2_up$V1
+ACP_TGFBP_overlap <- intersect(ACP_TGFB1_up, ACP_TGFB2_up)
+
+
+enrichgo_A673 <- enrichGO(gene=ACP_TGFBP_overlap, OrgDb = org.Hs.eg.db, keyType = "SYMBOL", ont = "ALL", minGSSize = 10, pvalueCutoff = 1)
+enrichgo_A673_BP <- enrichGO(gene=ACP_TGFBP_overlap, OrgDb = org.Hs.eg.db, keyType = "SYMBOL", ont = "BP", minGSSize = 10, pvalueCutoff = 1)
+
+
+```
+
+
+```{r fig.height=6, fig.width=6}
+dotplot(enrichgo_A673, showCategory=15)+ggtitle("GO all categories up")
+dotplot(enrichgo_A673_BP, showCategory=15)+ggtitle("GOBP")
+write.csv(enrichgo_A673, file="ACP_TGFB_enrichgo_all.csv")
+write.csv(enrichgo_A673_BP, file="ACP_TGFB_enrichgo_bp.csv")
+```
+
+
+

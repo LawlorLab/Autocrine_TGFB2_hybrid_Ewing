@@ -1,0 +1,1137 @@
+---
+title: "TGFB treated 24hrs RNAseq GSEA"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+editor_options: 
+  chunk_output_type: console
+---
+
+
+
+## Load packages
+
+```{r}
+#Set figure outputs
+library(here)
+knitr::opts_chunk$set(dpi=300,
+                      echo=TRUE, warning=FALSE, message=FALSE)
+knitr::opts_chunk$set(dev.args=list(bg="transparent"))
+knitr::opts_chunk$set(fig.path = here("figs", "GSEA_"),  dev = c("svglite", "png", "pdf"))
+
+```
+
+```{r libraries}
+#load packages
+library(fgsea)
+library(data.table)
+library(ggplot2)
+library(clusterProfiler)
+library(msigdb)
+library(org.Hs.eg.db)
+library(magrittr)
+library(dplyr)
+library(enrichplot)
+library(here)
+library(ReactomePA)
+library(msigdbr)
+library(tidyverse)
+library(svglite)
+library(glue)
+```
+
+```{r}
+setwd(here())
+```
+
+
+
+```{r load EF lists}
+## loading EWS::FLI1 gene sets. This uses Neerja's code for reading a custom GMT file she made. Also below in the ECM section there is an easier way to read an excel CSV that you have put your own custom gene lists into
+
+read.gmt = function(file){  if(!grepl("\\.gmt$",file)[1]){stop("Pathway information must be a .gmt file")}
+geneSetDB = readLines(file) ##read in the gmt file as a vector of lines
+geneSetDB = strsplit(geneSetDB,"\t") ##convert from vector of strings to a list
+names(geneSetDB) = sapply(geneSetDB,"[",1) ##move the names column as the names of the list
+geneSetDB = lapply(geneSetDB, "[",-1) ##remove name and description columns
+geneSetDB = lapply(geneSetDB, function(x){x[which(x!="")]}) ##remove empty strings  
+return(geneSetDB)}
+
+EWS_FLI1_file <- read.gmt(here("gene_lists", "EWS_FLI1_genesets_gmt.gmt"))
+
+EWS_FLI1_df <- do.call(rbind, lapply(EWS_FLI1_file, data.frame))
+names(EWS_FLI1_df) <- "gene_name"
+EWS_FLI1_df$Pathways <- gsub("\\..*","",rownames(EWS_FLI1_df))
+#EWS_FLI1_df$gene_name <- EWS_FLI1_df$gene_name
+EWS_FLI1_df_new <- data.frame(EWS_FLI1_df$Pathways, EWS_FLI1_df$gene_name)
+
+names(EWS_FLI1_df_new) <- c("Pathways", "gene_name")
+EWS_FLI1_df_new_tibble <- as_tibble(EWS_FLI1_df_new)
+```
+
+
+```{r}
+ECM_pathways <- read.csv(here("gene_lists", "ECM_custom_gene_lists.csv"))
+ECM_pathways <- as_tibble(ECM_pathways)
+ECM_pathways <- ECM_pathways[-1]
+```
+
+
+
+#TGFB1
+
+
+## TC71
+
+```{r T read deseq T1}
+#read DESEQ contrast
+TC71_TGFB <- read.csv(here("contrasts", "TC71_TGFB1_vs_veh_contrast.csv"), row.names=1)
+legend <- "TC71_veh_T1"
+
+
+```
+
+
+## Check data and make ranked lists of all genes for GSEA plus specific up and downregulated genes
+
+```{r T check duplicates T1}
+#check for duplicated gene symbols
+TC71_dup_gene_symbols <- TC71_TGFB %>% dplyr::filter(duplicated(res1_symb_id)) %>% dplyr::pull(res1_symb_id)
+
+```
+
+```{r include=FALSE}
+#Now let’s take a look at the rows associated with the duplicated gene symbols.
+TC71_TGFB %>%
+  dplyr::filter(res1_symb_id %in% TC71_dup_gene_symbols) %>%
+  dplyr::arrange(res1_symb_id)
+#appear identical
+
+```
+
+```{r include=FALSE}
+TC71_TGFB <- TC71_TGFB %>%
+  # Sort so that the highest absolute values of the log2 fold change are at the top
+  dplyr::arrange(dplyr::desc(abs(log2FoldChange))) %>% dplyr::distinct(res1_symb_id, .keep_all = TRUE)
+
+
+```
+
+
+```{r T make logfc vector T1}
+# Let's create a named vector ranked based on the log2 fold change values
+TC71_lfc_vector <- TC71_TGFB$log2FoldChange
+names(TC71_lfc_vector) <- TC71_TGFB$res1_symb_id
+
+
+# We need to sort the log2 fold change values in descending order here
+
+
+TC71_genelist <- sort(TC71_lfc_vector, decreasing = TRUE)
+
+```
+
+```{r TC71 EF GSEA dotplot T1, fig.height=8, fig.width=8}
+#GSEA of E::F lists, set pvalue cutoff high so it doesn't automatically exclude non-significant lists
+EWS_FLI1_TC71 <- GSEA(TC71_genelist, TERM2GENE=EWS_FLI1_df_new_tibble, pvalueCutoff = 1.1,  maxGSSize = 4000)
+
+#dotplot(EWS_FLI1_TC71, showCategory=20, x="NES")
+
+write.csv(EWS_FLI1_TC71@result, file="TC71_EF_GSEA_TGFB1.csv")
+```
+
+```{r TC71 EF GSEAs T1, fig.height=8, fig.width=8}
+#Look at individual GSEA plots
+gseaplot2(EWS_FLI1_TC71, geneSetID = "Riggi_DOWN", title = paste("Riggi_DOWN", "TC71 TGFB1"), pvalue_table = TRUE)
+gseaplot2(EWS_FLI1_TC71, geneSetID = "Riggi_UP", title = paste("Riggi_UP", "TC71 TGFB1"), pvalue_table = TRUE)
+
+```
+
+```{r TC71 ECM GSEA dotplot T1, fig.height=8, fig.width=8}
+#GSEA of E::F lists, set pvalue cutoff high so it doesn't automatically exclude non-significant lists
+ECM_TC71 <- GSEA(TC71_genelist, TERM2GENE=ECM_pathways, pvalueCutoff = 1.1,  maxGSSize = 4000)
+
+dotplot(ECM_TC71, showCategory=20, x="NES")
+
+write.csv(ECM_TC71@result, file="TC71_ECM_GSEA_TGFB1.csv")
+```
+
+```{r TC71 ECM GSEAs T1, fig.height=8, fig.width=8}
+#Look at individual GSEA plots
+gseaplot2(ECM_TC71, geneSetID = "SC28_markers", title = paste("SC28_markers", "TC71 TGFB1"), pvalue_table = TRUE)
+
+```
+
+
+
+
+
+
+## A673
+
+```{r A read deseq T1}
+#read DESEQ contrast
+A673_TGFB <- read.csv(here("contrasts", "A673_TGFB1_vs_veh_contrast.csv"), row.names=1)
+legend <- "A673_veh_T2"
+
+
+```
+
+
+## Check data and make ranked lists of all genes for GSEA plus specific up and downregulated genes
+
+```{r A check duplicates T1}
+#check for duplicated gene symbols
+A673_dup_gene_symbols <- A673_TGFB %>% dplyr::filter(duplicated(res1_symb_id)) %>% dplyr::pull(res1_symb_id)
+
+```
+
+```{r include=FALSE}
+#Now let’s take a look at the rows associated with the duplicated gene symbols.
+A673_TGFB %>%
+  dplyr::filter(res1_symb_id %in% A673_dup_gene_symbols) %>%
+  dplyr::arrange(res1_symb_id)
+#appear identical
+
+```
+
+```{r include=FALSE}
+A673_TGFB <- A673_TGFB %>%
+  # Sort so that the highest absolute values of the log2 fold change are at the top
+  dplyr::arrange(dplyr::desc(abs(log2FoldChange))) %>% dplyr::distinct(res1_symb_id, .keep_all = TRUE)
+
+
+```
+
+
+```{r A make logfc vector T1}
+# Let's create a named vector ranked based on the log2 fold change values
+A673_lfc_vector <- A673_TGFB$log2FoldChange
+names(A673_lfc_vector) <- A673_TGFB$res1_symb_id
+
+
+# We need to sort the log2 fold change values in descending order here
+
+
+A673_genelist <- sort(A673_lfc_vector, decreasing = TRUE)
+
+```
+
+```{r A673 EF GSEA dotplot T1, fig.height=8, fig.width=8}
+#GSEA of E::F lists, set pvalue cutoff high so it doesn't automatically exclude non-significant lists
+EWS_FLI1_A673 <- GSEA(A673_genelist, TERM2GENE=EWS_FLI1_df_new_tibble, pvalueCutoff = 1.1,  maxGSSize = 4000)
+
+#dotplot(EWS_FLI1_A673, showCategory=20, x="NES")
+
+write.csv(EWS_FLI1_A673@result, file="A673_EF_GSEA_TGFB1.csv")
+```
+
+```{r A673 EF GSEAs T1, fig.height=8, fig.width=8}
+#Look at individual GSEA plots
+gseaplot2(EWS_FLI1_A673, geneSetID = "Riggi_DOWN", title = paste("Riggi_DOWN", "A673 TGFB1"), pvalue_table = TRUE)
+gseaplot2(EWS_FLI1_A673, geneSetID = "Riggi_UP", title = paste("Riggi_UP", "A673 TGFB1"), pvalue_table = TRUE)
+
+```
+
+```{r A673 ECM GSEA dotplot T1, fig.height=8, fig.width=8}
+#GSEA of E::F lists, set pvalue cutoff high so it doesn't automatically exclude non-significant lists
+ECM_A673 <- GSEA(A673_genelist, TERM2GENE=ECM_pathways, pvalueCutoff = 1.1,  maxGSSize = 4000)
+
+dotplot(ECM_A673, showCategory=20, x="NES")
+
+write.csv(ECM_A673@result, file="A673_ECM_GSEA_TGFB1.csv")
+```
+
+```{r A673 ECM GSEAs T1, fig.height=8, fig.width=8}
+#Look at individual GSEA plots
+gseaplot2(ECM_A673, geneSetID = "SC28_markers", title = paste("SC28_markers", "A673 TGFB1"), pvalue_table = TRUE)
+
+```
+
+
+
+
+
+
+
+
+## CHLA10
+
+```{r C read deseq T1}
+#read DESEQ contrast
+CHLA10_TGFB <- read.csv(here("contrasts", "CHLA10_TGFB1_vs_veh_contrast.csv"), row.names=1)
+legend <- "CHLA10_veh_T2"
+
+
+```
+
+
+## Check data and make ranked lists of all genes for GSEA plus specific up and downregulated genes
+
+```{r C check duplicates T1}
+#check for duplicated gene symbols
+CHLA10_dup_gene_symbols <- CHLA10_TGFB %>% dplyr::filter(duplicated(res1_symb_id)) %>% dplyr::pull(res1_symb_id)
+
+```
+
+```{r include=FALSE}
+#Now let’s take a look at the rows associated with the duplicated gene symbols.
+CHLA10_TGFB %>%
+  dplyr::filter(res1_symb_id %in% CHLA10_dup_gene_symbols) %>%
+  dplyr::arrange(res1_symb_id)
+#appear identical
+
+```
+
+```{r include=FALSE}
+CHLA10_TGFB <- CHLA10_TGFB %>%
+  # Sort so that the highest absolute values of the log2 fold change are at the top
+  dplyr::arrange(dplyr::desc(abs(log2FoldChange))) %>% dplyr::distinct(res1_symb_id, .keep_all = TRUE)
+
+
+```
+
+
+```{r C make logfc vector T1}
+# Let's create a named vector ranked based on the log2 fold change values
+CHLA10_lfc_vector <- CHLA10_TGFB$log2FoldChange
+names(CHLA10_lfc_vector) <- CHLA10_TGFB$res1_symb_id
+
+
+# We need to sort the log2 fold change values in descending order here
+
+
+CHLA10_genelist <- sort(CHLA10_lfc_vector, decreasing = TRUE)
+
+```
+
+```{r CHLA10 EF GSEA dotplot T1, fig.height=8, fig.width=8}
+#GSEA of E::F lists, set pvalue cutoff high so it doesn't automatically exclude non-significant lists
+EWS_FLI1_CHLA10 <- GSEA(CHLA10_genelist, TERM2GENE=EWS_FLI1_df_new_tibble, pvalueCutoff = 1.1,  maxGSSize = 4000)
+
+#dotplot(EWS_FLI1_CHLA10, showCategory=20, x="NES")
+
+write.csv(EWS_FLI1_CHLA10@result, file="CHLA10_EF_GSEA_TGFB1.csv")
+```
+
+```{r CHLA10 EF GSEAs T1, fig.height=8, fig.width=8}
+#Look at individual GSEA plots
+gseaplot2(EWS_FLI1_CHLA10, geneSetID = "Riggi_DOWN", title = paste("Riggi_DOWN", "CHLA10 TGFB1"), pvalue_table = TRUE)
+gseaplot2(EWS_FLI1_CHLA10, geneSetID = "Riggi_UP", title = paste("Riggi_UP", "CHLA10 TGFB1"), pvalue_table = TRUE)
+
+```
+
+```{r CHLA10 ECM GSEA dotplot T1, fig.height=8, fig.width=8}
+#GSEA of E::F lists, set pvalue cutoff high so it doesn't automatically exclude non-significant lists
+ECM_CHLA10 <- GSEA(CHLA10_genelist, TERM2GENE=ECM_pathways, pvalueCutoff = 1.1,  maxGSSize = 4000)
+
+dotplot(ECM_CHLA10, showCategory=20, x="NES")
+
+write.csv(ECM_CHLA10@result, file="CHLA10_ECM_GSEA_TGFB1.csv")
+```
+
+```{r CHLA10 ECM GSEAs T1, fig.height=8, fig.width=8}
+#Look at individual GSEA plots
+gseaplot2(ECM_CHLA10, geneSetID = "SC28_markers", title = paste("SC28_markers", "CHLA10 TGFB1"), pvalue_table = TRUE)
+
+```
+
+
+
+
+
+
+
+## PDX305
+
+```{r P read deseq T1}
+#read DESEQ contrast
+PDX305_TGFB <- read.csv(here("contrasts","PDX305_TGFB1_vs_veh_contrast.csv"), row.names=1)
+legend <- "PDX305_veh_T2"
+
+
+```
+
+
+## Check data and make ranked lists of all genes for GSEA plus specific up and downregulated genes
+
+```{r P check duplicates T1}
+#check for duplicated gene symbols
+PDX305_dup_gene_symbols <- PDX305_TGFB %>% dplyr::filter(duplicated(res1_symb_id)) %>% dplyr::pull(res1_symb_id)
+
+```
+
+```{r include=FALSE}
+#Now let’s take a look at the rows associated with the duplicated gene symbols.
+PDX305_TGFB %>%
+  dplyr::filter(res1_symb_id %in% PDX305_dup_gene_symbols) %>%
+  dplyr::arrange(res1_symb_id)
+#appear identical
+
+```
+
+```{r include=FALSE}
+PDX305_TGFB <- PDX305_TGFB %>%
+  # Sort so that the highest absolute values of the log2 fold change are at the top
+  dplyr::arrange(dplyr::desc(abs(log2FoldChange))) %>% dplyr::distinct(res1_symb_id, .keep_all = TRUE)
+
+
+```
+
+
+```{r P make logfc vector T1}
+# Let's create a named vector ranked based on the log2 fold change values
+PDX305_lfc_vector <- PDX305_TGFB$log2FoldChange
+names(PDX305_lfc_vector) <- PDX305_TGFB$res1_symb_id
+
+
+# We need to sort the log2 fold change values in descending order here
+
+
+PDX305_genelist <- sort(PDX305_lfc_vector, decreasing = TRUE)
+
+```
+
+```{r PDX305 EF GSEA dotplot T1, fig.height=8, fig.width=8}
+#GSEA of E::F lists, set pvalue cutoff high so it doesn't automatically exclude non-significant lists
+EWS_FLI1_PDX305 <- GSEA(PDX305_genelist, TERM2GENE=EWS_FLI1_df_new_tibble, pvalueCutoff = 1.1,  maxGSSize = 4000)
+
+#dotplot(EWS_FLI1_PDX305, showCategory=20, x="NES")
+
+write.csv(EWS_FLI1_PDX305@result, file="PDX305_EF_GSEA_TGFB1.csv")
+```
+
+```{r PDX305 EF GSEAs T1, fig.height=8, fig.width=8}
+#Look at individual GSEA plots
+gseaplot2(EWS_FLI1_PDX305, geneSetID = "Riggi_DOWN", title = paste("Riggi_DOWN", "PDX305 TGFB1"), pvalue_table = TRUE)
+gseaplot2(EWS_FLI1_PDX305, geneSetID = "Riggi_UP", title = paste("Riggi_UP", "PDX305 TGFB1"), pvalue_table = TRUE)
+
+```
+
+```{r PDX305 ECM GSEA dotplot T1, fig.height=8, fig.width=8}
+#GSEA of E::F lists, set pvalue cutoff high so it doesn't automatically exclude non-significant lists
+ECM_PDX305 <- GSEA(PDX305_genelist, TERM2GENE=ECM_pathways, pvalueCutoff = 1.1,  maxGSSize = 4000)
+
+dotplot(ECM_PDX305, showCategory=20, x="NES")
+
+write.csv(ECM_PDX305@result, file="PDX305_ECM_GSEA_TGFB1.csv")
+```
+
+```{r PDX305 ECM GSEAs T1, fig.height=8, fig.width=8}
+#Look at individual GSEA plots
+gseaplot2(ECM_PDX305, geneSetID = "SC28_markers", title = paste("SC28_markers", "PDX305 TGFB1"), pvalue_table = TRUE)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+#TGFB2
+
+
+## TC71
+
+```{r T read deseq T2}
+#read DESEQ contrast
+TC71_TGFB <- read.csv(here("contrasts","TC71_TGFB2_vs_veh_contrast.csv"), row.names=1)
+legend <- "TC71_veh_T2"
+
+
+```
+
+
+## Check data and make ranked lists of all genes for GSEA plus specific up and downregulated genes
+
+```{r T check duplicates T2}
+#check for duplicated gene symbols
+TC71_dup_gene_symbols <- TC71_TGFB %>% dplyr::filter(duplicated(res2_symb_id)) %>% dplyr::pull(res2_symb_id)
+
+```
+
+```{r include=FALSE}
+#Now let’s take a look at the rows associated with the duplicated gene symbols.
+TC71_TGFB %>%
+  dplyr::filter(res2_symb_id %in% TC71_dup_gene_symbols) %>%
+  dplyr::arrange(res2_symb_id)
+#appear identical
+
+```
+
+```{r include=FALSE}
+TC71_TGFB <- TC71_TGFB %>%
+  # Sort so that the highest absolute values of the log2 fold change are at the top
+  dplyr::arrange(dplyr::desc(abs(log2FoldChange))) %>% dplyr::distinct(res2_symb_id, .keep_all = TRUE)
+
+
+```
+
+
+```{r T make logfc vector T2}
+# Let's create a named vector ranked based on the log2 fold change values
+TC71_lfc_vector <- TC71_TGFB$log2FoldChange
+names(TC71_lfc_vector) <- TC71_TGFB$res2_symb_id
+
+
+# We need to sort the log2 fold change values in descending order here
+
+
+TC71_genelist <- sort(TC71_lfc_vector, decreasing = TRUE)
+
+```
+
+```{r TC71 EF GSEA dotplot T2, fig.height=8, fig.width=8}
+#GSEA of E::F lists, set pvalue cutoff high so it doesn't automatically exclude non-significant lists
+EWS_FLI1_TC71 <- GSEA(TC71_genelist, TERM2GENE=EWS_FLI1_df_new_tibble, pvalueCutoff = 1.1,  maxGSSize = 4000)
+
+#dotplot(EWS_FLI1_TC71, showCategory=20, x="NES")
+
+write.csv(EWS_FLI1_TC71@result, file="TC71_EF_GSEA_TGFB2.csv")
+```
+
+```{r TC71 EF GSEAs T2, fig.height=8, fig.width=8}
+#Look at individual GSEA plots
+gseaplot2(EWS_FLI1_TC71, geneSetID = "Riggi_DOWN", title = paste("Riggi_DOWN", "TC71 TGFB2"), pvalue_table = TRUE)
+gseaplot2(EWS_FLI1_TC71, geneSetID = "Riggi_UP", title = paste("Riggi_UP", "TC71 TGFB2"), pvalue_table = TRUE)
+
+```
+
+```{r TC71 ECM GSEA dotplot T2, fig.height=8, fig.width=8}
+#GSEA of E::F lists, set pvalue cutoff high so it doesn't automatically exclude non-significant lists
+ECM_TC71 <- GSEA(TC71_genelist, TERM2GENE=ECM_pathways, pvalueCutoff = 1.1,  maxGSSize = 4000)
+
+dotplot(ECM_TC71, showCategory=20, x="NES")
+
+write.csv(ECM_TC71@result, file="TC71_ECM_GSEA_TGFB2.csv")
+```
+
+```{r TC71 ECM GSEAs T2, fig.height=8, fig.width=8}
+#Look at individual GSEA plots
+gseaplot2(ECM_TC71, geneSetID = "SC28_markers", title = paste("SC28_markers", "TC71 TGFB2"), pvalue_table = TRUE)
+
+```
+
+
+
+
+
+
+## A673
+
+```{r A read deseq T2}
+#read DESEQ contrast
+A673_TGFB <- read.csv(here("contrasts","A673_TGFB2_vs_veh_contrast.csv"), row.names=1)
+legend <- "A673_veh_T2"
+
+
+```
+
+
+## Check data and make ranked lists of all genes for GSEA plus specific up and downregulated genes
+
+```{r A check duplicates T2}
+#check for duplicated gene symbols
+A673_dup_gene_symbols <- A673_TGFB %>% dplyr::filter(duplicated(res2_symb_id)) %>% dplyr::pull(res2_symb_id)
+
+```
+
+```{r include=FALSE}
+#Now let’s take a look at the rows associated with the duplicated gene symbols.
+A673_TGFB %>%
+  dplyr::filter(res2_symb_id %in% A673_dup_gene_symbols) %>%
+  dplyr::arrange(res2_symb_id)
+#appear identical
+
+```
+
+```{r include=FALSE}
+A673_TGFB <- A673_TGFB %>%
+  # Sort so that the highest absolute values of the log2 fold change are at the top
+  dplyr::arrange(dplyr::desc(abs(log2FoldChange))) %>% dplyr::distinct(res2_symb_id, .keep_all = TRUE)
+
+
+```
+
+
+```{r A make logfc vector T2}
+# Let's create a named vector ranked based on the log2 fold change values
+A673_lfc_vector <- A673_TGFB$log2FoldChange
+names(A673_lfc_vector) <- A673_TGFB$res2_symb_id
+
+
+# We need to sort the log2 fold change values in descending order here
+
+
+A673_genelist <- sort(A673_lfc_vector, decreasing = TRUE)
+
+```
+
+```{r A673 EF GSEA dotplot T2, fig.height=8, fig.width=8}
+#GSEA of E::F lists, set pvalue cutoff high so it doesn't automatically exclude non-significant lists
+EWS_FLI1_A673 <- GSEA(A673_genelist, TERM2GENE=EWS_FLI1_df_new_tibble, pvalueCutoff = 1.1,  maxGSSize = 4000)
+
+#dotplot(EWS_FLI1_A673, showCategory=20, x="NES")
+
+write.csv(EWS_FLI1_A673@result, file="A673_EF_GSEA_TGFB2.csv")
+```
+
+```{r A673 EF GSEAs T2, fig.height=8, fig.width=8}
+#Look at individual GSEA plots
+gseaplot2(EWS_FLI1_A673, geneSetID = "Riggi_DOWN", title = paste("Riggi_DOWN", "A673 TGFB2"), pvalue_table = TRUE)
+gseaplot2(EWS_FLI1_A673, geneSetID = "Riggi_UP", title = paste("Riggi_UP", "A673 TGFB2"), pvalue_table = TRUE)
+
+```
+
+```{r A673 ECM GSEA dotplot T2, fig.height=8, fig.width=8}
+#GSEA of E::F lists, set pvalue cutoff high so it doesn't automatically exclude non-significant lists
+ECM_A673 <- GSEA(A673_genelist, TERM2GENE=ECM_pathways, pvalueCutoff = 1.1,  maxGSSize = 4000)
+
+dotplot(ECM_A673, showCategory=20, x="NES")
+
+write.csv(ECM_A673@result, file="A673_ECM_GSEA_TGFB2.csv")
+```
+
+```{r A673 ECM GSEAs T2, fig.height=8, fig.width=8}
+#Look at individual GSEA plots
+gseaplot2(ECM_A673, geneSetID = "SC28_markers", title = paste("SC28_markers", "A673 TGFB2"), pvalue_table = TRUE)
+
+```
+
+
+
+
+
+
+
+
+## CHLA10
+
+```{r C read deseq T2}
+#read DESEQ contrast
+CHLA10_TGFB <- read.csv(here("contrasts","CHLA10_TGFB2_vs_veh_contrast.csv"), row.names=1)
+legend <- "CHLA10_veh_T2"
+
+
+```
+
+
+## Check data and make ranked lists of all genes for GSEA plus specific up and downregulated genes
+
+```{r C check duplicates T2}
+#check for duplicated gene symbols
+CHLA10_dup_gene_symbols <- CHLA10_TGFB %>% dplyr::filter(duplicated(res2_symb_id)) %>% dplyr::pull(res2_symb_id)
+
+```
+
+```{r include=FALSE}
+#Now let’s take a look at the rows associated with the duplicated gene symbols.
+CHLA10_TGFB %>%
+  dplyr::filter(res2_symb_id %in% CHLA10_dup_gene_symbols) %>%
+  dplyr::arrange(res2_symb_id)
+#appear identical
+
+```
+
+```{r include=FALSE}
+CHLA10_TGFB <- CHLA10_TGFB %>%
+  # Sort so that the highest absolute values of the log2 fold change are at the top
+  dplyr::arrange(dplyr::desc(abs(log2FoldChange))) %>% dplyr::distinct(res2_symb_id, .keep_all = TRUE)
+
+
+```
+
+
+```{r C make logfc vector T2}
+# Let's create a named vector ranked based on the log2 fold change values
+CHLA10_lfc_vector <- CHLA10_TGFB$log2FoldChange
+names(CHLA10_lfc_vector) <- CHLA10_TGFB$res2_symb_id
+
+
+# We need to sort the log2 fold change values in descending order here
+
+
+CHLA10_genelist <- sort(CHLA10_lfc_vector, decreasing = TRUE)
+
+```
+
+```{r CHLA10 EF GSEA dotplot T2, fig.height=8, fig.width=8}
+#GSEA of E::F lists, set pvalue cutoff high so it doesn't automatically exclude non-significant lists
+EWS_FLI1_CHLA10 <- GSEA(CHLA10_genelist, TERM2GENE=EWS_FLI1_df_new_tibble, pvalueCutoff = 1.1,  maxGSSize = 4000)
+
+#dotplot(EWS_FLI1_CHLA10, showCategory=20, x="NES")
+
+write.csv(EWS_FLI1_CHLA10@result, file="CHLA10_EF_GSEA_TGFB2.csv")
+```
+
+```{r CHLA10 EF GSEAs T2, fig.height=8, fig.width=8}
+#Look at individual GSEA plots
+gseaplot2(EWS_FLI1_CHLA10, geneSetID = "Riggi_DOWN", title = paste("Riggi_DOWN", "CHLA10 TGFB2"), pvalue_table = TRUE)
+gseaplot2(EWS_FLI1_CHLA10, geneSetID = "Riggi_UP", title = paste("Riggi_UP", "CHLA10 TGFB2"), pvalue_table = TRUE)
+
+```
+
+```{r CHLA10 ECM GSEA dotplot T2, fig.height=8, fig.width=8}
+#GSEA of E::F lists, set pvalue cutoff high so it doesn't automatically exclude non-significant lists
+ECM_CHLA10 <- GSEA(CHLA10_genelist, TERM2GENE=ECM_pathways, pvalueCutoff = 1.1,  maxGSSize = 4000)
+
+dotplot(ECM_CHLA10, showCategory=20, x="NES")
+
+write.csv(ECM_CHLA10@result, file="CHLA10_ECM_GSEA_TGFB2.csv")
+```
+
+```{r CHLA10 ECM GSEAs T2, fig.height=8, fig.width=8}
+#Look at individual GSEA plots
+gseaplot2(ECM_CHLA10, geneSetID = "SC28_markers", title = paste("SC28_markers", "CHLA10 TGFB2"), pvalue_table = TRUE)
+
+```
+
+
+
+
+
+
+
+## PDX305
+
+```{r P read deseq T2}
+#read DESEQ contrast
+PDX305_TGFB <- read.csv(here("contrasts","PDX305_TGFB2_vs_veh_contrast.csv"), row.names=1)
+legend <- "PDX305_veh_T2"
+
+
+```
+
+
+## Check data and make ranked lists of all genes for GSEA plus specific up and downregulated genes
+
+```{r P check duplicates T2}
+#check for duplicated gene symbols
+PDX305_dup_gene_symbols <- PDX305_TGFB %>% dplyr::filter(duplicated(res2_symb_id)) %>% dplyr::pull(res2_symb_id)
+
+```
+
+```{r include=FALSE}
+#Now let’s take a look at the rows associated with the duplicated gene symbols.
+PDX305_TGFB %>%
+  dplyr::filter(res2_symb_id %in% PDX305_dup_gene_symbols) %>%
+  dplyr::arrange(res2_symb_id)
+#appear identical
+
+```
+
+```{r include=FALSE}
+PDX305_TGFB <- PDX305_TGFB %>%
+  # Sort so that the highest absolute values of the log2 fold change are at the top
+  dplyr::arrange(dplyr::desc(abs(log2FoldChange))) %>% dplyr::distinct(res2_symb_id, .keep_all = TRUE)
+
+
+```
+
+
+```{r P make logfc vector T2}
+# Let's create a named vector ranked based on the log2 fold change values
+PDX305_lfc_vector <- PDX305_TGFB$log2FoldChange
+names(PDX305_lfc_vector) <- PDX305_TGFB$res2_symb_id
+
+
+# We need to sort the log2 fold change values in descending order here
+
+
+PDX305_genelist <- sort(PDX305_lfc_vector, decreasing = TRUE)
+
+```
+
+```{r PDX305 EF GSEA dotplot T2, fig.height=8, fig.width=8}
+#GSEA of E::F lists, set pvalue cutoff high so it doesn't automatically exclude non-significant lists
+EWS_FLI1_PDX305 <- GSEA(PDX305_genelist, TERM2GENE=EWS_FLI1_df_new_tibble, pvalueCutoff = 1.1,  maxGSSize = 4000)
+
+#dotplot(EWS_FLI1_PDX305, showCategory=20, x="NES")
+
+write.csv(EWS_FLI1_PDX305@result, file="PDX305_EF_GSEA_TGFB2.csv")
+```
+
+```{r PDX305 EF GSEAs T2, fig.height=8, fig.width=8}
+#Look at individual GSEA plots
+gseaplot2(EWS_FLI1_PDX305, geneSetID = "Riggi_DOWN", title = paste("Riggi_DOWN", "PDX305 TGFB2"), pvalue_table = TRUE)
+gseaplot2(EWS_FLI1_PDX305, geneSetID = "Riggi_UP", title = paste("Riggi_UP", "PDX305 TGFB2"), pvalue_table = TRUE)
+
+```
+
+```{r PDX305 ECM GSEA dotplot T2, fig.height=8, fig.width=8}
+#GSEA of E::F lists, set pvalue cutoff high so it doesn't automatically exclude non-significant lists
+ECM_PDX305 <- GSEA(PDX305_genelist, TERM2GENE=ECM_pathways, pvalueCutoff = 1.1,  maxGSSize = 4000)
+
+dotplot(ECM_PDX305, showCategory=20, x="NES")
+
+write.csv(ECM_PDX305@result, file="PDX305_ECM_GSEA_TGFB2.csv")
+```
+
+```{r PDX305 ECM GSEAs T2, fig.height=8, fig.width=8}
+#Look at individual GSEA plots
+gseaplot2(ECM_PDX305, geneSetID = "SC28_markers", title = paste("SC28_markers", "PDX305 TGFB2"), pvalue_table = TRUE)
+
+```
+
+
+
+#vacto
+
+
+
+## TC71
+
+```{r T read deseq vacto}
+#read DESEQ contrast
+TC71_vacto <- read.csv(here("contrasts", "TC71_Vacto1uM_vs_veh_contrast.csv"), row.names=1)
+legend <- "TC71_veh_vacto"
+
+
+```
+
+
+## Check data and make ranked lists of all genes for GSEA plus specific up and downregulated genes
+
+```{r T check duplicates vacto}
+#check for duplicated gene symbols
+TC71_dup_gene_symbols <- TC71_vacto %>% dplyr::filter(duplicated(res3_symb_id)) %>% dplyr::pull(res3_symb_id)
+
+```
+
+```{r include=FALSE}
+#Now let’s take a look at the rows associated with the duplicated gene symbols.
+TC71_vacto %>%
+  dplyr::filter(res3_symb_id %in% TC71_dup_gene_symbols) %>%
+  dplyr::arrange(res3_symb_id)
+#appear identical
+
+```
+
+```{r include=FALSE}
+TC71_vacto <- TC71_vacto %>%
+  # Sort so that the highest absolute values of the log2 fold change are at the top
+  dplyr::arrange(dplyr::desc(abs(log2FoldChange))) %>% dplyr::distinct(res3_symb_id, .keep_all = TRUE)
+
+
+```
+
+
+```{r T make logfc vector vacto}
+# Let's create a named vector ranked based on the log2 fold change values
+TC71_lfc_vector <- TC71_vacto$log2FoldChange
+names(TC71_lfc_vector) <- TC71_vacto$res3_symb_id
+
+
+# We need to sort the log2 fold change values in descending order here
+
+
+TC71_genelist <- sort(TC71_lfc_vector, decreasing = TRUE)
+
+```
+
+```{r TC71 EF GSEA dotplot vacto, fig.height=8, fig.width=8}
+#GSEA of E::F lists, set pvalue cutoff high so it doesn't automatically exclude non-significant lists
+EWS_FLI1_TC71 <- GSEA(TC71_genelist, TERM2GENE=EWS_FLI1_df_new_tibble, pvalueCutoff = 1.1,  maxGSSize = 4000)
+
+#dotplot(EWS_FLI1_TC71, showCategory=20, x="NES")
+
+write.csv(EWS_FLI1_TC71@result, file="TC71_EF_GSEA_vacto.csv")
+```
+
+```{r TC71 EF GSEAs vacto, fig.height=8, fig.width=8}
+#Look at individual GSEA plots
+gseaplot2(EWS_FLI1_TC71, geneSetID = "Riggi_DOWN", title = paste("Riggi_DOWN", "TC71 vacto"), pvalue_table = TRUE)
+gseaplot2(EWS_FLI1_TC71, geneSetID = "Riggi_UP", title = paste("Riggi_UP", "TC71 vacto"), pvalue_table = TRUE)
+
+```
+
+```{r TC71 ECM GSEA dotplot vacto, fig.height=8, fig.width=8}
+#GSEA of E::F lists, set pvalue cutoff high so it doesn't automatically exclude non-significant lists
+ECM_TC71 <- GSEA(TC71_genelist, TERM2GENE=ECM_pathways, pvalueCutoff = 1.1,  maxGSSize = 4000)
+
+dotplot(ECM_TC71, showCategory=20, x="NES")
+
+write.csv(ECM_TC71@result, file="TC71_ECM_GSEA_vacto.csv")
+```
+
+```{r TC71 ECM GSEAs vacto, fig.height=8, fig.width=8}
+#Look at individual GSEA plots
+gseaplot2(ECM_TC71, geneSetID = "SC28_markers", title = paste("SC28_markers", "TC71 vacto"), pvalue_table = TRUE)
+
+```
+
+
+
+
+
+
+## A673
+
+```{r A read deseq vacto}
+#read DESEQ contrast
+A673_vacto <- read.csv(here("contrasts", "A673_Vacto1uM_vs_veh_contrast.csv"), row.names=1)
+legend <- "A673_veh_vacto"
+
+
+```
+
+
+## Check data and make ranked lists of all genes for GSEA plus specific up and downregulated genes
+
+```{r A check duplicates vacto}
+#check for duplicated gene symbols
+A673_dup_gene_symbols <- A673_vacto %>% dplyr::filter(duplicated(res3_symb_id)) %>% dplyr::pull(res3_symb_id)
+
+```
+
+```{r include=FALSE}
+#Now let’s take a look at the rows associated with the duplicated gene symbols.
+A673_vacto %>%
+  dplyr::filter(res3_symb_id %in% A673_dup_gene_symbols) %>%
+  dplyr::arrange(res3_symb_id)
+#appear identical
+
+```
+
+```{r include=FALSE}
+A673_vacto <- A673_vacto %>%
+  # Sort so that the highest absolute values of the log2 fold change are at the top
+  dplyr::arrange(dplyr::desc(abs(log2FoldChange))) %>% dplyr::distinct(res3_symb_id, .keep_all = TRUE)
+
+
+```
+
+
+```{r A make logfc vector vacto}
+# Let's create a named vector ranked based on the log2 fold change values
+A673_lfc_vector <- A673_vacto$log2FoldChange
+names(A673_lfc_vector) <- A673_vacto$res3_symb_id
+
+
+# We need to sort the log2 fold change values in descending order here
+
+
+A673_genelist <- sort(A673_lfc_vector, decreasing = TRUE)
+
+```
+
+```{r A673 EF GSEA dotplot vacto, fig.height=8, fig.width=8}
+#GSEA of E::F lists, set pvalue cutoff high so it doesn't automatically exclude non-significant lists
+EWS_FLI1_A673 <- GSEA(A673_genelist, TERM2GENE=EWS_FLI1_df_new_tibble, pvalueCutoff = 1.1,  maxGSSize = 4000)
+
+#dotplot(EWS_FLI1_A673, showCategory=20, x="NES")
+
+write.csv(EWS_FLI1_A673@result, file="A673_EF_GSEA_vacto.csv")
+```
+
+```{r A673 EF GSEAs vacto, fig.height=8, fig.width=8}
+#Look at individual GSEA plots
+gseaplot2(EWS_FLI1_A673, geneSetID = "Riggi_DOWN", title = paste("Riggi_DOWN", "A673 vacto"), pvalue_table = TRUE)
+gseaplot2(EWS_FLI1_A673, geneSetID = "Riggi_UP", title = paste("Riggi_UP", "A673 vacto"), pvalue_table = TRUE)
+
+```
+
+```{r A673 ECM GSEA dotplot vacto, fig.height=8, fig.width=8}
+#GSEA of E::F lists, set pvalue cutoff high so it doesn't automatically exclude non-significant lists
+ECM_A673 <- GSEA(A673_genelist, TERM2GENE=ECM_pathways, pvalueCutoff = 1.1,  maxGSSize = 4000)
+
+dotplot(ECM_A673, showCategory=20, x="NES")
+
+write.csv(ECM_A673@result, file="A673_ECM_GSEA_vacto.csv")
+```
+
+```{r A673 ECM GSEAs vacto, fig.height=8, fig.width=8}
+#Look at individual GSEA plots
+gseaplot2(ECM_A673, geneSetID = "SC28_markers", title = paste("SC28_markers", "A673 vacto"), pvalue_table = TRUE)
+
+```
+
+
+
+
+
+
+
+
+## CHLA10
+
+```{r C read deseq vacto}
+#read DESEQ contrast
+CHLA10_vacto <- read.csv(here("contrasts", "CHLA10_Vacto1uM_vs_veh_contrast.csv"), row.names=1)
+legend <- "CHLA10_veh_vacto"
+
+
+```
+
+
+## Check data and make ranked lists of all genes for GSEA plus specific up and downregulated genes
+
+```{r C check duplicates vacto}
+#check for duplicated gene symbols
+CHLA10_dup_gene_symbols <- CHLA10_vacto %>% dplyr::filter(duplicated(res3_symb_id)) %>% dplyr::pull(res3_symb_id)
+
+```
+
+```{r include=FALSE}
+#Now let’s take a look at the rows associated with the duplicated gene symbols.
+CHLA10_vacto %>%
+  dplyr::filter(res3_symb_id %in% CHLA10_dup_gene_symbols) %>%
+  dplyr::arrange(res3_symb_id)
+#appear identical
+
+```
+
+```{r include=FALSE}
+CHLA10_vacto <- CHLA10_vacto %>%
+  # Sort so that the highest absolute values of the log2 fold change are at the top
+  dplyr::arrange(dplyr::desc(abs(log2FoldChange))) %>% dplyr::distinct(res3_symb_id, .keep_all = TRUE)
+
+
+```
+
+
+```{r C make logfc vector vacto}
+# Let's create a named vector ranked based on the log2 fold change values
+CHLA10_lfc_vector <- CHLA10_vacto$log2FoldChange
+names(CHLA10_lfc_vector) <- CHLA10_vacto$res3_symb_id
+
+
+# We need to sort the log2 fold change values in descending order here
+
+
+CHLA10_genelist <- sort(CHLA10_lfc_vector, decreasing = TRUE)
+
+```
+
+```{r CHLA10 EF GSEA dotplot vacto, fig.height=8, fig.width=8}
+#GSEA of E::F lists, set pvalue cutoff high so it doesn't automatically exclude non-significant lists
+EWS_FLI1_CHLA10 <- GSEA(CHLA10_genelist, TERM2GENE=EWS_FLI1_df_new_tibble, pvalueCutoff = 1.1,  maxGSSize = 4000)
+
+#dotplot(EWS_FLI1_CHLA10, showCategory=20, x="NES")
+
+write.csv(EWS_FLI1_CHLA10@result, file="CHLA10_EF_GSEA_vacto.csv")
+```
+
+```{r CHLA10 EF GSEAs vacto, fig.height=8, fig.width=8}
+#Look at individual GSEA plots
+gseaplot2(EWS_FLI1_CHLA10, geneSetID = "Riggi_DOWN", title = paste("Riggi_DOWN", "CHLA10 vacto"), pvalue_table = TRUE)
+gseaplot2(EWS_FLI1_CHLA10, geneSetID = "Riggi_UP", title = paste("Riggi_UP", "CHLA10 vacto"), pvalue_table = TRUE)
+
+```
+
+```{r CHLA10 ECM GSEA dotplot vacto, fig.height=8, fig.width=8}
+#GSEA of E::F lists, set pvalue cutoff high so it doesn't automatically exclude non-significant lists
+ECM_CHLA10 <- GSEA(CHLA10_genelist, TERM2GENE=ECM_pathways, pvalueCutoff = 1.1,  maxGSSize = 4000)
+
+dotplot(ECM_CHLA10, showCategory=20, x="NES")
+
+write.csv(ECM_CHLA10@result, file="CHLA10_ECM_GSEA_vacto.csv")
+```
+
+```{r CHLA10 ECM GSEAs vacto, fig.height=8, fig.width=8}
+#Look at individual GSEA plots
+gseaplot2(ECM_CHLA10, geneSetID = "SC28_markers", title = paste("SC28_markers", "CHLA10 vacto"), pvalue_table = TRUE)
+
+```
+
+
+
+
+
+
+
+## PDX305
+
+```{r P read deseq vacto}
+#read DESEQ contrast
+PDX305_vacto <- read.csv(here("contrasts","PDX305_Vacto1uM_vs_veh_contrast.csv"), row.names=1)
+legend <- "PDX305_veh_vacto"
+
+
+```
+
+
+## Check data and make ranked lists of all genes for GSEA plus specific up and downregulated genes
+
+```{r P check duplicates vacto}
+#check for duplicated gene symbols
+PDX305_dup_gene_symbols <- PDX305_vacto %>% dplyr::filter(duplicated(res3_symb_id)) %>% dplyr::pull(res3_symb_id)
+
+```
+
+```{r include=FALSE}
+#Now let’s take a look at the rows associated with the duplicated gene symbols.
+PDX305_vacto %>%
+  dplyr::filter(res3_symb_id %in% PDX305_dup_gene_symbols) %>%
+  dplyr::arrange(res3_symb_id)
+#appear identical
+
+```
+
+```{r include=FALSE}
+PDX305_vacto <- PDX305_vacto %>%
+  # Sort so that the highest absolute values of the log2 fold change are at the top
+  dplyr::arrange(dplyr::desc(abs(log2FoldChange))) %>% dplyr::distinct(res3_symb_id, .keep_all = TRUE)
+
+
+```
+
+
+```{r P make logfc vector vacto}
+# Let's create a named vector ranked based on the log2 fold change values
+PDX305_lfc_vector <- PDX305_vacto$log2FoldChange
+names(PDX305_lfc_vector) <- PDX305_vacto$res3_symb_id
+
+
+# We need to sort the log2 fold change values in descending order here
+
+
+PDX305_genelist <- sort(PDX305_lfc_vector, decreasing = TRUE)
+
+```
+
+```{r PDX305 EF GSEA dotplot vacto, fig.height=8, fig.width=8}
+#GSEA of E::F lists, set pvalue cutoff high so it doesn't automatically exclude non-significant lists
+EWS_FLI1_PDX305 <- GSEA(PDX305_genelist, TERM2GENE=EWS_FLI1_df_new_tibble, pvalueCutoff = 1.1,  maxGSSize = 4000)
+
+#dotplot(EWS_FLI1_PDX305, showCategory=20, x="NES")
+
+write.csv(EWS_FLI1_PDX305@result, file="PDX305_EF_GSEA_vacto.csv")
+```
+
+```{r PDX305 EF GSEAs vacto, fig.height=8, fig.width=8}
+#Look at individual GSEA plots
+gseaplot2(EWS_FLI1_PDX305, geneSetID = "Riggi_DOWN", title = paste("Riggi_DOWN", "PDX305 vacto"), pvalue_table = TRUE)
+gseaplot2(EWS_FLI1_PDX305, geneSetID = "Riggi_UP", title = paste("Riggi_UP", "PDX305 vacto"), pvalue_table = TRUE)
+
+```
+
+```{r PDX305 ECM GSEA dotplot vacto, fig.height=8, fig.width=8}
+#GSEA of E::F lists, set pvalue cutoff high so it doesn't automatically exclude non-significant lists
+ECM_PDX305 <- GSEA(PDX305_genelist, TERM2GENE=ECM_pathways, pvalueCutoff = 1.1,  maxGSSize = 4000)
+
+dotplot(ECM_PDX305, showCategory=20, x="NES")
+
+write.csv(ECM_PDX305@result, file="PDX305_ECM_GSEA_vacto.csv")
+```
+
+```{r PDX305 ECM GSEAs vacto, fig.height=8, fig.width=8}
+#Look at individual GSEA plots
+gseaplot2(ECM_PDX305, geneSetID = "SC28_markers", title = paste("SC28_markers", "PDX305 vacto"), pvalue_table = TRUE)
+
+```
+
+
+
+
+
+
+
+
+

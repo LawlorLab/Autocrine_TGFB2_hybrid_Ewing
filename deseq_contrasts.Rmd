@@ -1,0 +1,277 @@
+---
+title: "DESeq contrasts"
+author: "Sean Taylor and Glenn Morton, updated by Emma Wrenn 24-10-16"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+params:
+  lfc:
+    value: "lfcShrink"
+    choices:
+    - "lfcShrink"
+    - "log2FoldChange"
+    input: select
+    multiple: no
+  lfcThreshold: 1
+  signif:
+    value: "pvalue"
+    choices:
+    - "pvalue"
+    - "padj"
+    input: select
+    multiple: no
+  signifThreshold: 0.05
+  saveRes: TRUE
+    
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, eval=TRUE, include=TRUE, message=FALSE)
+root.dir = paste0(params$root_dir, "/")
+library(knitr)
+library(pander)
+library(tidyverse)
+require(org.Hs.eg.db)
+library(DESeq2)
+library(parallel)
+library(DT)
+library(VennDiagram)
+library(RColorBrewer)
+library(here)
+
+knitr::opts_chunk$set(fig.path = here("figs", "contrasts_"),  dev = c("svglite", "png", "pdf"))
+source(here("helperscripts.R"))
+
+saveRes <- params$saveRes
+```
+
+# Import data
+
+## Import DDS
+Import the DESeq Dataset Object generated during EDA...
+```{r, echo=TRUE}
+ddsFull <- readRDS(here('TC71_A673_CHLA10_PDX305_DESeqDataSet.rds'))
+
+```
+
+
+#TC71 
+Subset to the samples of interest...
+
+
+```{r}
+#Subset
+dds_TC71 <- subset(ddsFull, select=colData(ddsFull)$cell_line=="TC71")
+
+#Relevel factors
+dds_TC71$treatment <-factor(dds_TC71$treatment)
+
+```
+
+```{r}
+# dds <- dds
+design(dds_TC71) <- ~ treatment
+dds_TC71 <- DESeq(dds_TC71)
+resultsNames(dds_TC71)
+```
+
+
+```{r}
+res1 <- results(dds_TC71, contrast=c("treatment","TGFB1","veh"))
+res2 <- results(dds_TC71, contrast=c("treatment","TGFB2","veh"))
+res3 <- results(dds_TC71, contrast=c("treatment","Vacto 1uM","veh"))
+```
+
+```{r}
+res1_ens_id <- rownames(res1)
+res1_symb_id <- mapIds(org.Hs.eg.db, keys = res1_ens_id, keytype = "ENSEMBL", column="SYMBOL")
+res1_symb_id  <- as.data.frame(res1_symb_id )
+res1<- merge(as.data.frame(res1), res1_symb_id , by='row.names')
+
+res2_ens_id <- rownames(res2)
+res2_symb_id <- mapIds(org.Hs.eg.db, keys = res2_ens_id, keytype = "ENSEMBL", column="SYMBOL")
+res2_symb_id  <- as.data.frame(res2_symb_id )
+res2<- merge(as.data.frame(res2), res2_symb_id , by='row.names')
+
+res3_ens_id <- rownames(res3)
+res3_symb_id <- mapIds(org.Hs.eg.db, keys = res3_ens_id, keytype = "ENSEMBL", column="SYMBOL")
+res3_symb_id  <- as.data.frame(res3_symb_id )
+res3<- merge(as.data.frame(res3), res3_symb_id , by='row.names')
+
+write.csv(res1, file=here("contrasts", "TC71_TGFB1_vs_veh_contrast.csv"))
+write.csv(res2, file=here("contrasts","TC71_TGFB2_vs_veh_contrast.csv"))
+write.csv(res3, file=here("contrasts","TC71_Vacto1uM_vs_veh_contrast.csv"))
+
+rm(res1)
+rm(res2)
+rm(res3)
+```
+
+
+#A673 
+Subset to the samples of interest...
+
+
+```{r}
+#Subset
+dds_A673 <- subset(ddsFull, select=colData(ddsFull)$cell_line=="A673")
+
+#Relevel factors
+dds_A673$treatment <-factor(dds_A673$treatment)
+
+```
+
+```{r}
+# dds <- dds
+design(dds_A673) <- ~ treatment
+dds_A673 <- DESeq(dds_A673)
+resultsNames(dds_A673)
+```
+
+
+```{r}
+res1 <- results(dds_A673, contrast=c("treatment","TGFB1","veh"))
+res2 <- results(dds_A673, contrast=c("treatment","TGFB2","veh"))
+res3 <- results(dds_A673, contrast=c("treatment","Vacto 1uM","veh"))
+```
+
+```{r}
+res1_ens_id <- rownames(res1)
+res1_symb_id <- mapIds(org.Hs.eg.db, keys = res1_ens_id, keytype = "ENSEMBL", column="SYMBOL")
+res1_symb_id  <- as.data.frame(res1_symb_id )
+res1<- merge(as.data.frame(res1), res1_symb_id , by='row.names')
+
+res2_ens_id <- rownames(res2)
+res2_symb_id <- mapIds(org.Hs.eg.db, keys = res2_ens_id, keytype = "ENSEMBL", column="SYMBOL")
+res2_symb_id  <- as.data.frame(res2_symb_id )
+res2<- merge(as.data.frame(res2), res2_symb_id , by='row.names')
+
+res3_ens_id <- rownames(res3)
+res3_symb_id <- mapIds(org.Hs.eg.db, keys = res3_ens_id, keytype = "ENSEMBL", column="SYMBOL")
+res3_symb_id  <- as.data.frame(res3_symb_id )
+res3<- merge(as.data.frame(res3), res3_symb_id , by='row.names')
+
+write.csv(res1, file=here("contrasts", "A673_TGFB1_vs_veh_contrast.csv"))
+write.csv(res2, file=here("contrasts","A673_TGFB2_vs_veh_contrast.csv"))
+write.csv(res3, file=here("contrasts","A673_Vacto1uM_vs_veh_contrast.csv"))
+
+rm(res1)
+rm(res2)
+rm(res3)
+```
+
+
+#CHLA10 
+Subset to the samples of interest...
+
+
+```{r}
+#Subset
+dds_CHLA10 <- subset(ddsFull, select=colData(ddsFull)$cell_line=="CHLA10")
+
+#Relevel factors
+dds_CHLA10$treatment <-factor(dds_CHLA10$treatment)
+
+```
+
+```{r}
+# dds <- dds
+design(dds_CHLA10) <- ~ treatment
+dds_CHLA10 <- DESeq(dds_CHLA10)
+resultsNames(dds_CHLA10)
+```
+
+
+```{r}
+res1 <- results(dds_CHLA10, contrast=c("treatment","TGFB1","veh"))
+res2 <- results(dds_CHLA10, contrast=c("treatment","TGFB2","veh"))
+res3 <- results(dds_CHLA10, contrast=c("treatment","Vacto 1uM","veh"))
+
+
+```
+
+```{r}
+res1_ens_id <- rownames(res1)
+res1_symb_id <- mapIds(org.Hs.eg.db, keys = res1_ens_id, keytype = "ENSEMBL", column="SYMBOL")
+res1_symb_id  <- as.data.frame(res1_symb_id )
+res1<- merge(as.data.frame(res1), res1_symb_id , by='row.names')
+
+res2_ens_id <- rownames(res2)
+res2_symb_id <- mapIds(org.Hs.eg.db, keys = res2_ens_id, keytype = "ENSEMBL", column="SYMBOL")
+res2_symb_id  <- as.data.frame(res2_symb_id )
+res2<- merge(as.data.frame(res2), res2_symb_id , by='row.names')
+
+res3_ens_id <- rownames(res3)
+res3_symb_id <- mapIds(org.Hs.eg.db, keys = res3_ens_id, keytype = "ENSEMBL", column="SYMBOL")
+res3_symb_id  <- as.data.frame(res3_symb_id )
+res3<- merge(as.data.frame(res3), res3_symb_id , by='row.names')
+
+
+write.csv(res1, file=here("contrasts", "CHLA10_TGFB1_vs_veh_contrast.csv"))
+write.csv(res2, file=here("contrasts","CHLA10_TGFB2_vs_veh_contrast.csv"))
+write.csv(res3, file=here("contrasts","CHLA10_Vacto1uM_vs_veh_contrast.csv"))
+
+rm(res1)
+rm(res2)
+rm(res3)
+```
+
+#PDX305 
+Subset to the samples of interest...
+
+
+```{r}
+#Subset
+dds_PDX305 <- subset(ddsFull, select=colData(ddsFull)$cell_line=="PDX305")
+
+#Relevel factors
+dds_PDX305$treatment <-factor(dds_PDX305$treatment)
+
+```
+
+```{r}
+# dds <- dds
+design(dds_PDX305) <- ~ treatment
+dds_PDX305 <- DESeq(dds_PDX305)
+resultsNames(dds_PDX305)
+```
+
+
+```{r}
+res1 <- results(dds_PDX305, contrast=c("treatment","TGFB1","veh"))
+res2 <- results(dds_PDX305, contrast=c("treatment","TGFB2","veh"))
+res3 <- results(dds_PDX305, contrast=c("treatment","Vacto 1uM","veh"))
+```
+
+```{r}
+res1_ens_id <- rownames(res1)
+res1_symb_id <- mapIds(org.Hs.eg.db, keys = res1_ens_id, keytype = "ENSEMBL", column="SYMBOL")
+res1_symb_id  <- as.data.frame(res1_symb_id )
+res1<- merge(as.data.frame(res1), res1_symb_id , by='row.names')
+
+res2_ens_id <- rownames(res2)
+res2_symb_id <- mapIds(org.Hs.eg.db, keys = res2_ens_id, keytype = "ENSEMBL", column="SYMBOL")
+res2_symb_id  <- as.data.frame(res2_symb_id )
+res2<- merge(as.data.frame(res2), res2_symb_id , by='row.names')
+
+res3_ens_id <- rownames(res3)
+res3_symb_id <- mapIds(org.Hs.eg.db, keys = res3_ens_id, keytype = "ENSEMBL", column="SYMBOL")
+res3_symb_id  <- as.data.frame(res3_symb_id )
+res3<- merge(as.data.frame(res3), res3_symb_id , by='row.names')
+
+write.csv(res1, file=here("contrasts", "PDX305_TGFB1_vs_veh_contrast.csv"))
+write.csv(res2, file=here("contrasts","PDX305_TGFB2_vs_veh_contrast.csv"))
+write.csv(res3, file=here("contrasts","PDX305_Vacto1uM_vs_veh_contrast.csv"))
+
+rm(res1)
+rm(res2)
+rm(res3)
+
+```
+
+```{r}
+sessionInfo()
+```
+

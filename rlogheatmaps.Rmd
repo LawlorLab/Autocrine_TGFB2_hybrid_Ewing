@@ -1,0 +1,147 @@
+---
+title: "DESeq TACP heatmaps"
+author: "Sean Taylor and Glenn Morton, updated by Emma Wrenn 25-4-9"
+date: "`r Sys.Date()`"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, eval=TRUE, include=TRUE, message=FALSE)
+
+library(knitr)
+library(pander)
+library(tidyverse)
+library(org.Hs.eg.db)
+library(DESeq2)
+library(viridis)
+library(pheatmap)
+
+library(here)
+here()
+
+```
+
+
+
+```{r}
+knitr::opts_chunk$set(dpi=300,
+                      echo=TRUE, warning=FALSE, message=FALSE)
+knitr::opts_chunk$set(dev.args=list(bg="transparent"))
+knitr::opts_chunk$set(fig.path = here("figs", "heatmap_"),  dev = c("svglite", "png", "pdf"))
+```
+
+
+```{r}
+#read rlog normalized and reordered counts matrix from bulk RNA seq
+rlog <- read.csv(here("TACP_rlog_reordered_colname_genesymbol.csv"))
+rlog <- rlog[,-1]
+rlog <- drop_na(rlog, symb_id)
+rownames(rlog) <- make.unique(rlog$symb_id)
+rlog <- rlog[,-1]
+```
+
+```{r}
+#read Riggi et al. 2014 repressed gene list
+riggi_dn <- read.delim(here("gene_lists", "RIGGI_DN.txt"), header=F)
+riggi_dn <- riggi_dn$V1
+
+```
+
+```{r}
+#load genes significantly upregulated by TGFB2 treatment in A673, CHLA10, PDX305
+ACP_T2_up <- read.delim(here("contrasts", "ACP_T2_overlap_gene_names.txt"), header=F)
+ACP_T2_up <- ACP_T2_up$V1
+```
+
+```{r}
+#intersect Riggi DN genes and TGFB2 significantly upregulated genes
+sig_riggi_dn <- intersect(ACP_T2_up, riggi_dn)
+```
+
+
+```{r all heatmaps}
+
+#sanity check with known TGFB response gene TGFBI, COL1A1
+pheatmap(rlog[sig_riggi_dn,], cluster_rows=TRUE, show_rownames=TRUE,
+         cluster_cols=FALSE, main="Normalized counts, RLD transform", scale="row", color = magma(100), border_color = NA, gaps_col = c(12, 24, 36))
+
+
+```
+```{r t2 vacto heatmap}
+
+#sanity check with known TGFB response gene TGFBI, COL1A1
+pheatmap(rlog[sig_riggi_dn, c(-4,-5,-6, -16, -18, -19, -28, -29, -30, -40, -41, -42)], cluster_rows=TRUE, show_rownames=TRUE,
+         cluster_cols=FALSE, main="Normalized counts, RLD transform", scale="row", color = magma(100), border_color = NA, gaps_col = c(9, 18, 27))
+```
+```{r ACP t2 vacto heatmap}
+
+#sanity check with known TGFB response gene TGFBI, COL1A1
+pheatmap(rlog[sig_riggi_dn, c(-1:-12, -16, -18, -19, -28, -29, -30, -40, -41, -42)], cluster_rows=TRUE, show_rownames=TRUE,
+         cluster_cols=FALSE, main="Normalized counts, RLD transform", scale="row", color = magma(100), border_color = NA, gaps_col = c(9, 18, 27))
+```
+
+
+```{r TC t2 vacto heatmap}
+
+#sanity check with known TGFB response gene TGFBI, COL1A1
+
+pheatmap(rlog[sig_riggi_dn, c("TC71_veh_1", "TC71_veh_2", "TC71_veh_3", "TC71_TGFB2_1", "TC71_TGFB2_2", "TC71_TGFB2_3", "TC71_Vacto.1uM_1", "TC71_Vacto.1uM_2", "TC71_Vacto.1uM_3", "CHLA10_veh_1", "CHLA10_veh_2", "CHLA10_veh_3", "CHLA10_TGFB2_1", "CHLA10_TGFB2_2", "CHLA10_TGFB2_3", "CHLA10_Vacto.1uM_1", "CHLA10_Vacto.1uM_2", "CHLA10_Vacto.1uM_3")], cluster_rows=TRUE, show_rownames=TRUE,
+         cluster_cols=FALSE, main="Normalized counts, RLD transform", scale="row", color = magma(100), border_color = NA, gaps_col = c(9))
+```
+
+
+```{r t2 heatmap}
+
+#sanity check with known TGFB response gene TGFBI, COL1A1
+pheatmap(rlog[sig_riggi_dn, c(-4,-5,-6, -10, -11, -12, -16, -18, -19, -22, -23, -24, -28, -29, -30, -34, -35, -36, -40, -41, -42, -46, -47, -48)], cluster_rows=TRUE, show_rownames=TRUE,
+         cluster_cols=FALSE, main="Normalized counts, RLD transform", scale="row", color = inferno(100), border_color = NA, gaps_col = c(6,12, 18))
+```
+
+
+
+
+```{r t2 CHLA10 heatmaps}
+CHLA10_riggi_dn <- intersect(rownames(rlog), riggi_dn)
+#sanity check with known TGFB response gene TGFBI, COL1A1
+pheatmap(rlog[CHLA10_riggi_dn, c("CHLA10_veh_1", "CHLA10_veh_2", "CHLA10_veh_3", "CHLA10_TGFB2_1", "CHLA10_TGFB2_2", "CHLA10_TGFB2_3")], cluster_rows=TRUE, show_rownames=TRUE,
+         cluster_cols=FALSE, main="Normalized counts, RLD transform", scale="row", color = inferno(100), border_color = NA)
+
+pheatmap(rlog[sig_riggi_dn, c("CHLA10_veh_1", "CHLA10_veh_2", "CHLA10_veh_3", "CHLA10_TGFB2_1", "CHLA10_TGFB2_2", "CHLA10_TGFB2_3")], cluster_rows=TRUE, show_rownames=TRUE,
+         cluster_cols=FALSE, main="Normalized counts, RLD transform", scale="row", color = inferno(100), border_color = NA)
+```
+
+```{r t2 A673 heatmaps}
+
+
+pheatmap(rlog[CHLA10_riggi_dn, c("A673_veh_1", "A673_veh_2", "A673_veh_3", "A673_TGFB2_1", "A673_TGFB2_2", "A673_TGFB2_3")], cluster_rows=TRUE, show_rownames=TRUE,
+         cluster_cols=FALSE, main="Normalized counts, RLD transform", scale="row", color = inferno(100), border_color = NA)
+
+pheatmap(rlog[sig_riggi_dn, c("A673_veh_1", "A673_veh_2", "A673_veh_3", "A673_TGFB2_1", "A673_TGFB2_2", "A673_TGFB2_3")], cluster_rows=TRUE, show_rownames=TRUE,
+         cluster_cols=FALSE, main="Normalized counts, RLD transform", scale="row", color = inferno(100), border_color = NA)
+```
+
+```{r t2 PDX305 heatmaps}
+
+
+pheatmap(rlog[CHLA10_riggi_dn, c("PDX305_veh_1", "PDX305_veh_2", "PDX305_veh_3", "PDX305_TGFB2_1", "PDX305_TGFB2_2", "PDX305_TGFB2_3")], cluster_rows=TRUE, show_rownames=TRUE,
+         cluster_cols=FALSE, main="Normalized counts, RLD transform", scale="row", color = inferno(100), border_color = NA)
+
+pheatmap(rlog[sig_riggi_dn, c("PDX305_veh_1", "PDX305_veh_2", "PDX305_veh_3", "PDX305_TGFB2_1", "PDX305_TGFB2_2", "PDX305_TGFB2_3")], cluster_rows=TRUE, show_rownames=TRUE,
+         cluster_cols=FALSE, main="Normalized counts, RLD transform", scale="row", color = inferno(100), border_color = NA)
+```
+
+```{r t2 TC71 heatmaps}
+
+
+pheatmap(rlog[CHLA10_riggi_dn, c("TC71_veh_1", "TC71_veh_2", "TC71_veh_3", "TC71_TGFB2_1", "TC71_TGFB2_2", "TC71_TGFB2_3")], cluster_rows=TRUE, show_rownames=TRUE,
+         cluster_cols=FALSE, main="Normalized counts, RLD transform", scale="row", color = inferno(100), border_color = NA)
+
+pheatmap(rlog[sig_riggi_dn, c("TC71_veh_1", "TC71_veh_2", "TC71_veh_3", "TC71_TGFB2_1", "TC71_TGFB2_2", "TC71_TGFB2_3")], cluster_rows=TRUE, show_rownames=TRUE,
+         cluster_cols=FALSE, main="Normalized counts, RLD transform", scale="row", color = inferno(100), border_color = NA)
+```

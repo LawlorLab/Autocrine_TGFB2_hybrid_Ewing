@@ -1,0 +1,440 @@
+---
+title: "TACP TGFB RNAseq venn diagrams"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+editor_options: 
+  chunk_output_type: console
+date: "2024-4-09"
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(Vennerable)
+library(AnnotationDbi)
+library(org.Hs.eg.db)
+library(ComplexHeatmap)
+```
+
+```{r}
+#Set wd
+library(here)
+here()
+
+```
+
+```{r}
+#Set figure outputs
+knitr::opts_chunk$set(dpi=300,
+                      echo=TRUE, warning=FALSE, message=FALSE)
+knitr::opts_chunk$set(dev.args=list(bg="transparent"))
+knitr::opts_chunk$set(fig.path = here("figs", "venn_"),  dev = c("svglite", "png", "pdf"))
+```
+
+
+
+
+#read contrasts
+
+```{r}
+#read contrasts
+T_T1_vs_veh <- read.csv(file=here("contrasts", "TC71_TGFB1_vs_veh_contrast.csv"))
+T_T1_vs_veh_sig <- T_T1_vs_veh %>% filter(padj <= 0.05)
+T_T2_vs_veh <-  read.csv(file=here("contrasts", "TC71_TGFB2_vs_veh_contrast.csv"))
+T_T2_vs_veh_sig <- T_T2_vs_veh %>% filter(padj <= 0.05)
+T_vacto_vs_veh <- read.csv(here("contrasts", "TC71_Vacto1uM_vs_veh_contrast.csv"))
+T_vacto_vs_veh_sig <- T_vacto_vs_veh %>% filter(padj <= 0.05)
+
+A_T1_vs_veh <- read.csv(file=here("contrasts", "A673_TGFB1_vs_veh_contrast.csv"))
+A_T1_vs_veh_sig <- A_T1_vs_veh %>% filter(padj <= 0.05)
+A_T2_vs_veh <-  read.csv(file=here("contrasts", "A673_TGFB2_vs_veh_contrast.csv"))
+A_T2_vs_veh_sig <- A_T2_vs_veh %>% filter(padj <= 0.05)
+A_vacto_vs_veh <- read.csv(here("contrasts", "A673_Vacto1uM_vs_veh_contrast.csv"))
+A_vacto_vs_veh_sig <- A_vacto_vs_veh %>% filter(padj <= 0.05)
+
+C_T1_vs_veh <- read.csv(file=here("contrasts", "CHLA10_TGFB1_vs_veh_contrast.csv"))
+C_T1_vs_veh_sig <- C_T1_vs_veh %>% filter(padj <= 0.05)
+C_T2_vs_veh <-  read.csv(file=here("contrasts", "CHLA10_TGFB2_vs_veh_contrast.csv"))
+C_T2_vs_veh_sig <- C_T2_vs_veh %>% filter(padj <= 0.05)
+C_vacto_vs_veh <- read.csv(here("contrasts", "CHLA10_Vacto1uM_vs_veh_contrast.csv"))
+C_vacto_vs_veh_sig <- C_vacto_vs_veh %>% filter(padj <= 0.05)
+
+P_T1_vs_veh <- read.csv(file=here("contrasts", "PDX305_TGFB1_vs_veh_contrast.csv"))
+P_T1_vs_veh_sig <- P_T1_vs_veh %>% filter(padj <= 0.05)
+P_T2_vs_veh <-  read.csv(file=here("contrasts", "PDX305_TGFB2_vs_veh_contrast.csv"))
+P_T2_vs_veh_sig <- P_T2_vs_veh %>% filter(padj <= 0.05)
+P_vacto_vs_veh <- read.csv(here("contrasts", "PDX305_Vacto1uM_vs_veh_contrast.csv"))
+P_vacto_vs_veh_sig <- P_vacto_vs_veh %>% filter(padj <= 0.05)
+
+```
+
+#up and down ensembl ID lists
+
+```{r}
+T_T1_vs_veh_up <- T_T1_vs_veh_sig %>% filter(log2FoldChange > 0)
+T_T1_vs_veh_up <- unlist(T_T1_vs_veh_up$Row.names)
+
+T_T1_vs_veh_dn <- T_T1_vs_veh_sig %>% filter(log2FoldChange < 0)
+T_T1_vs_veh_dn <- unlist(T_T1_vs_veh_dn$Row.names)
+
+
+
+A_T1_vs_veh_up <- A_T1_vs_veh_sig %>% filter(log2FoldChange > 0)
+A_T1_vs_veh_up <- unlist(A_T1_vs_veh_up$Row.names)
+
+A_T1_vs_veh_dn <- A_T1_vs_veh_sig %>% filter(log2FoldChange < 0)
+A_T1_vs_veh_dn <- unlist(A_T1_vs_veh_dn$Row.names)
+
+
+
+C_T1_vs_veh_up <- C_T1_vs_veh_sig %>% filter(log2FoldChange > 0)
+C_T1_vs_veh_up <- unlist(C_T1_vs_veh_up$Row.names)
+
+C_T1_vs_veh_dn <- C_T1_vs_veh_sig %>% filter(log2FoldChange < 0)
+C_T1_vs_veh_dn <- unlist(C_T1_vs_veh_dn$Row.names)
+
+
+
+P_T1_vs_veh_up <- P_T1_vs_veh_sig %>% filter(log2FoldChange > 0)
+P_T1_vs_veh_up <- unlist(P_T1_vs_veh_up$Row.names)
+
+P_T1_vs_veh_dn <- P_T1_vs_veh_sig %>% filter(log2FoldChange < 0)
+P_T1_vs_veh_dn <- unlist(P_T1_vs_veh_dn$Row.names)
+```
+
+
+```{r}
+T_T2_vs_veh_up <- T_T2_vs_veh_sig %>% filter(log2FoldChange > 0)
+T_T2_vs_veh_up <- unlist(T_T2_vs_veh_up$Row.names)
+
+T_T2_vs_veh_dn <- T_T2_vs_veh_sig %>% filter(log2FoldChange < 0)
+T_T2_vs_veh_dn <- unlist(T_T2_vs_veh_dn$Row.names)
+
+
+
+A_T2_vs_veh_up <- A_T2_vs_veh_sig %>% filter(log2FoldChange > 0)
+A_T2_vs_veh_up <- unlist(A_T2_vs_veh_up$Row.names)
+
+A_T2_vs_veh_dn <- A_T2_vs_veh_sig %>% filter(log2FoldChange < 0)
+A_T2_vs_veh_dn <- unlist(A_T2_vs_veh_dn$Row.names)
+
+
+
+C_T2_vs_veh_up <- C_T2_vs_veh_sig %>% filter(log2FoldChange > 0)
+C_T2_vs_veh_up <- unlist(C_T2_vs_veh_up$Row.names)
+
+C_T2_vs_veh_dn <- C_T2_vs_veh_sig %>% filter(log2FoldChange < 0)
+C_T2_vs_veh_dn <- unlist(C_T2_vs_veh_dn$Row.names)
+
+
+
+P_T2_vs_veh_up <- P_T2_vs_veh_sig %>% filter(log2FoldChange > 0)
+P_T2_vs_veh_up <- unlist(P_T2_vs_veh_up$Row.names)
+
+P_T2_vs_veh_dn <- P_T2_vs_veh_sig %>% filter(log2FoldChange < 0)
+P_T2_vs_veh_dn <- unlist(P_T2_vs_veh_dn$Row.names)
+```
+
+
+
+
+
+```{r}
+T_vacto_vs_veh_up <- T_vacto_vs_veh_sig %>% filter(log2FoldChange > 0)
+T_vacto_vs_veh_up <- unlist(T_vacto_vs_veh_up$Row.names)
+
+T_vacto_vs_veh_dn <- T_vacto_vs_veh_sig %>% filter(log2FoldChange < 0)
+T_vacto_vs_veh_dn <- unlist(T_vacto_vs_veh_dn$Row.names)
+
+
+
+A_vacto_vs_veh_up <- A_vacto_vs_veh_sig %>% filter(log2FoldChange > 0)
+A_vacto_vs_veh_up <- unlist(A_vacto_vs_veh_up$Row.names)
+
+A_vacto_vs_veh_dn <- A_vacto_vs_veh_sig %>% filter(log2FoldChange < 0)
+A_vacto_vs_veh_dn <- unlist(A_vacto_vs_veh_dn$Row.names)
+
+
+
+C_vacto_vs_veh_up <- C_vacto_vs_veh_sig %>% filter(log2FoldChange > 0)
+C_vacto_vs_veh_up <- unlist(C_vacto_vs_veh_up$Row.names)
+
+C_vacto_vs_veh_dn <- C_vacto_vs_veh_sig %>% filter(log2FoldChange < 0)
+C_vacto_vs_veh_dn <- unlist(C_vacto_vs_veh_dn$Row.names)
+
+
+
+P_vacto_vs_veh_up <- P_vacto_vs_veh_sig %>% filter(log2FoldChange > 0)
+P_vacto_vs_veh_up <- unlist(P_vacto_vs_veh_up$Row.names)
+
+P_vacto_vs_veh_dn <- P_vacto_vs_veh_sig %>% filter(log2FoldChange < 0)
+P_vacto_vs_veh_dn <- unlist(P_vacto_vs_veh_dn$Row.names)
+```
+
+
+#TGFB1 overlap
+
+```{r}
+
+TACP_T1_overlap <- intersect(T_T1_vs_veh_up, A_T1_vs_veh_up)
+TACP_T1_overlap_2 <- intersect(C_T1_vs_veh_up, P_T1_vs_veh_up)
+TACP_T1_overlap_3 <- intersect(TACP_T1_overlap, TACP_T1_overlap_2)
+
+write.table(TACP_T1_overlap_3, file=here("contrasts","TACP_T1_overlap.txt"), quote=FALSE, row.names=FALSE, col.names = FALSE)
+
+TACP_T1_overlap_4 <- mapIds(org.Hs.eg.db, keys = TACP_T1_overlap_3, keytype = "ENSEMBL", column="SYMBOL")
+write.table(TACP_T1_overlap_4, file=here("contrasts","TACP_T1_overlap_gene_names.txt"), quote=FALSE, row.names=FALSE, col.names = FALSE)
+
+ACP_T1_overlap <-  A_T1_vs_veh_up
+ACP_T1_overlap_2 <- intersect(C_T1_vs_veh_up, P_T1_vs_veh_up)
+ACP_T1_overlap_3 <- intersect(ACP_T1_overlap, ACP_T1_overlap_2)
+
+write.table(ACP_T1_overlap_3, file=here("contrasts","ACP_T1_overlap.txt"), quote=FALSE, row.names=FALSE, col.names = FALSE)
+
+ACP_T1_overlap_4 <- mapIds(org.Hs.eg.db, keys = ACP_T1_overlap_3, keytype = "ENSEMBL", column="SYMBOL")
+write.table(ACP_T1_overlap_4, file=here("contrasts","ACP_T1_overlap_gene_names.txt"), quote=FALSE, row.names=FALSE, col.names = FALSE)
+```
+
+#TGFB2 overlap
+
+```{r}
+
+TACP_T2_overlap <- intersect(T_T2_vs_veh_up, A_T2_vs_veh_up)
+TACP_T2_overlap_2 <- intersect(C_T2_vs_veh_up, P_T2_vs_veh_up)
+TACP_T2_overlap_3 <- intersect(TACP_T2_overlap, TACP_T2_overlap_2)
+
+write.table(TACP_T2_overlap_3, file=here("contrasts","TACP_T2_overlap.txt"), quote=FALSE, row.names=FALSE, col.names = FALSE)
+
+TACP_T2_overlap_4 <- mapIds(org.Hs.eg.db, keys = TACP_T2_overlap_3, keytype = "ENSEMBL", column="SYMBOL")
+write.table(TACP_T2_overlap_4, file=here("contrasts","TACP_T2_overlap_gene_names.txt"), quote=FALSE, row.names=FALSE, col.names = FALSE)
+
+ACP_T2_overlap <-  A_T2_vs_veh_up
+ACP_T2_overlap_2 <- intersect(C_T2_vs_veh_up, P_T2_vs_veh_up)
+ACP_T2_overlap_3 <- intersect(ACP_T2_overlap, ACP_T2_overlap_2)
+
+write.table(ACP_T2_overlap_3, file=here("contrasts","ACP_T2_overlap.txt"), quote=FALSE, row.names=FALSE, col.names = FALSE)
+
+ACP_T2_overlap_4 <- mapIds(org.Hs.eg.db, keys = ACP_T2_overlap_3, keytype = "ENSEMBL", column="SYMBOL")
+write.table(ACP_T2_overlap_4, file=here("contrasts","ACP_T2_overlap_gene_names.txt"), quote=FALSE, row.names=FALSE, col.names = FALSE)
+```
+
+```{r}
+
+TACP_T2_overlap_dn <- intersect(T_T2_vs_veh_dn, A_T2_vs_veh_dn)
+TACP_T2_overlap_dn_2 <- intersect(C_T2_vs_veh_dn, P_T2_vs_veh_dn)
+TACP_T2_overlap_dn_3 <- intersect(TACP_T2_overlap_dn, TACP_T2_overlap_dn_2)
+
+write.table(TACP_T2_overlap_dn_3, file=here("contrasts","TACP_T2_overlap_dn.txt"), quote=FALSE, row.names=FALSE, col.names = FALSE)
+
+TACP_T2_overlap_dn_4 <- mapIds(org.Hs.eg.db, keys = TACP_T2_overlap_dn_3, keytype = "ENSEMBL", column="SYMBOL")
+write.table(TACP_T2_overlap_dn_4, file=here("contrasts","TACP_T2_overlap_gene_names_dn.txt"), quote=FALSE, row.names=FALSE, col.names = FALSE)
+
+ACP_T2_overlap_dn <-  A_T2_vs_veh_dn
+ACP_T2_overlap_dn_2 <- intersect(C_T2_vs_veh_dn, P_T2_vs_veh_dn)
+ACP_T2_overlap_dn_3 <- intersect(ACP_T2_overlap_dn, ACP_T2_overlap_dn_2)
+
+write.table(ACP_T2_overlap_3, file=here("contrasts","ACP_T2_overlap_dn.txt"), quote=FALSE, row.names=FALSE, col.names = FALSE)
+
+ACP_T2_overlap_dn_4 <- mapIds(org.Hs.eg.db, keys = ACP_T2_overlap_dn_3, keytype = "ENSEMBL", column="SYMBOL")
+write.table(ACP_T2_overlap_dn_4, file=here("contrasts","ACP_T2_overlap_gene_names_dn.txt"), quote=FALSE, row.names=FALSE, col.names = FALSE)
+```
+
+```{r}
+
+TACP_T1_overlap_dn <- intersect(T_T1_vs_veh_dn, A_T1_vs_veh_dn)
+TACP_T1_overlap_dn_2 <- intersect(C_T1_vs_veh_dn, P_T1_vs_veh_dn)
+TACP_T1_overlap_dn_3 <- intersect(TACP_T1_overlap_dn, TACP_T1_overlap_dn_2)
+
+write.table(TACP_T1_overlap_dn_3, file=here("contrasts","TACP_T1_overlap_dn.txt"), quote=FALSE, row.names=FALSE, col.names = FALSE)
+
+TACP_T1_overlap_dn_4 <- mapIds(org.Hs.eg.db, keys = TACP_T1_overlap_dn_3, keytype = "ENSEMBL", column="SYMBOL")
+write.table(TACP_T1_overlap_dn_4, file=here("contrasts","TACP_T1_overlap_gene_names_dn.txt"), quote=FALSE, row.names=FALSE, col.names = FALSE)
+
+ACP_T1_overlap_dn <-  A_T1_vs_veh_dn
+ACP_T1_overlap_dn_2 <- intersect(C_T1_vs_veh_dn, P_T1_vs_veh_dn)
+ACP_T1_overlap_dn_3 <- intersect(ACP_T1_overlap_dn, ACP_T1_overlap_dn_2)
+
+write.table(ACP_T1_overlap_3, file=here("contrasts","ACP_T1_overlap_dn.txt"), quote=FALSE, row.names=FALSE, col.names = FALSE)
+
+ACP_T1_overlap_dn_4 <- mapIds(org.Hs.eg.db, keys = ACP_T1_overlap_dn_3, keytype = "ENSEMBL", column="SYMBOL")
+write.table(ACP_T1_overlap_dn_4, file=here("contrasts","ACP_T1_overlap_gene_names_dn.txt"), quote=FALSE, row.names=FALSE, col.names = FALSE)
+```
+
+
+Vacto overlap
+
+```{r}
+
+TACP_vacto_overlap <- intersect(T_vacto_vs_veh_up, A_vacto_vs_veh_dn)
+TACP_vacto_overlap_2 <- intersect(C_vacto_vs_veh_up, P_vacto_vs_veh_dn)
+TACP_vacto_overlap_3 <- intersect(TACP_vacto_overlap, TACP_vacto_overlap_2)
+
+write.table(TACP_vacto_overlap_3, file=here("contrasts","TACP_vacto_overlap.txt"), quote=FALSE, row.names=FALSE, col.names = FALSE)
+
+#TACP_vacto_overlap_4 <- mapIds(org.Hs.eg.db, keys = TACP_vacto_overlap_3, keytype = "ENSEMBL", column="SYMBOL")
+#write.table(TACP_vacto_overlap_4, file=here("contrasts","TACP_vacto_overlap_gene_names.txt"), quote=FALSE, row.names=FALSE, col.names = FALSE)
+
+ACP_vacto_overlap <-  A_vacto_vs_veh_dn
+ACP_vacto_overlap_2 <- intersect(C_vacto_vs_veh_dn, P_vacto_vs_veh_dn)
+ACP_vacto_overlap_3 <- intersect(ACP_vacto_overlap, ACP_vacto_overlap_2)
+
+write.table(ACP_vacto_overlap_3, file=here("contrasts","ACP_vacto_overlap.txt"), quote=FALSE, row.names=FALSE, col.names = FALSE)
+
+ACP_vacto_overlap_4 <- mapIds(org.Hs.eg.db, keys = ACP_vacto_overlap_3, keytype = "ENSEMBL", column="SYMBOL")
+write.table(ACP_vacto_overlap_4, file=here("contrasts","ACP_vacto_overlap_gene_names.txt"), quote=FALSE, row.names=FALSE, col.names = FALSE)
+
+TACP_vacto_overlap <- intersect(T_vacto_vs_veh_up, A_vacto_vs_veh_dn)
+TACP_vacto_overlap_2 <- intersect(C_vacto_vs_veh_up, P_vacto_vs_veh_dn)
+TACP_vacto_overlap_3 <- intersect(TACP_vacto_overlap, TACP_vacto_overlap_2)
+
+write.table(TACP_vacto_overlap_3, file=here("contrasts","TACP_vacto_overlap.txt"), quote=FALSE, row.names=FALSE, col.names = FALSE)
+
+
+```
+
+#TACP Venns
+
+```{r TACP_T1}
+TACP_T1_venn<- list(T_T1_vs_veh_up=T_T1_vs_veh_up, A_T1_vs_veh_up=A_T1_vs_veh_up, C_T1_vs_veh_up=C_T1_vs_veh_up, P_T1_vs_veh_up=P_T1_vs_veh_up)
+TACP_T1_venn <- Venn(TACP_T1_venn)
+plot(TACP_T1_venn, type="ChowRuskey", doWeights =TRUE)
+plot(TACP_T1_venn, type="ellipses", doWeights =FALSE)
+
+TACP_T1_venn_dn<- list(T_T1_vs_veh_dn=T_T1_vs_veh_dn, A_T1_vs_veh_dn=A_T1_vs_veh_dn, C_T1_vs_veh_dn=C_T1_vs_veh_dn, P_T1_vs_veh_dn=P_T1_vs_veh_dn)
+TACP_T1_venn_dn <- Venn(TACP_T1_venn_dn)
+plot(TACP_T1_venn_dn, type="ChowRuskey", doWeights =TRUE)
+plot(TACP_T1_venn_dn, type="ellipses", doWeights =FALSE)
+```
+
+```{r TACP_T2}
+TACP_T2_venn<- list(T_T2_vs_veh_up=T_T2_vs_veh_up, A_T2_vs_veh_up=A_T2_vs_veh_up, C_T2_vs_veh_up=C_T2_vs_veh_up, P_T2_vs_veh_up=P_T2_vs_veh_up)
+TACP_T2_venn <- Venn(TACP_T2_venn)
+plot(TACP_T2_venn, type="ChowRuskey", doWeights =TRUE)
+plot(TACP_T2_venn, type="ellipses", doWeights =FALSE)
+
+TACP_T2_venn_dn<- list(T_T2_vs_veh_dn=T_T2_vs_veh_dn, A_T2_vs_veh_dn=A_T2_vs_veh_dn, C_T2_vs_veh_dn=C_T2_vs_veh_dn, P_T2_vs_veh_dn=P_T2_vs_veh_dn)
+TACP_T2_venn_dn <- Venn(TACP_T2_venn_dn)
+plot(TACP_T2_venn_dn, type="ChowRuskey", doWeights =TRUE)
+plot(TACP_T2_venn_dn, type="ellipses", doWeights =FALSE)
+```
+
+```{r TACP_vacto}
+TACP_vacto_venn<- list(T_vacto_vs_veh_up=T_vacto_vs_veh_up, A_vacto_vs_veh_up=A_vacto_vs_veh_up, C_vacto_vs_veh_up=C_vacto_vs_veh_up, P_vacto_vs_veh_up=P_vacto_vs_veh_up)
+TACP_vacto_venn <- Venn(TACP_vacto_venn)
+plot(TACP_vacto_venn, type="ChowRuskey", doWeights =TRUE)
+plot(TACP_vacto_venn, type="ellipses", doWeights =FALSE)
+
+TACP_vacto_venn_dn<- list(T_vacto_vs_veh_dn=T_vacto_vs_veh_dn, A_vacto_vs_veh_dn=A_vacto_vs_veh_dn, C_vacto_vs_veh_dn=C_vacto_vs_veh_dn, P_vacto_vs_veh_dn=P_vacto_vs_veh_dn)
+TACP_vacto_venn_dn <- Venn(TACP_vacto_venn_dn)
+plot(TACP_vacto_venn_dn, type="ChowRuskey", doWeights =TRUE)
+plot(TACP_vacto_venn_dn, type="ellipses", doWeights =FALSE)
+```
+
+#ACP Venns
+
+```{r ACP_T1}
+ACP_T1_venn<- list(A_T1_vs_veh_up=A_T1_vs_veh_up, C_T1_vs_veh_up=C_T1_vs_veh_up, P_T1_vs_veh_up=P_T1_vs_veh_up)
+ACP_T1_venn <- Venn(ACP_T1_venn)
+plot(ACP_T1_venn, type="circles", doWeights =TRUE)
+
+ACP_T1_venn_dn<- list(A_T1_vs_veh_dn=A_T1_vs_veh_dn, C_T1_vs_veh_dn=C_T1_vs_veh_dn, P_T1_vs_veh_dn=P_T1_vs_veh_dn)
+ACP_T1_venn_dn <- Venn(ACP_T1_venn_dn)
+plot(ACP_T1_venn_dn, type="circles", doWeights =TRUE)
+```
+
+```{r ACP_T2}
+ACP_T2_venn<- list(A_T2_vs_veh_up=A_T2_vs_veh_up, C_T2_vs_veh_up=C_T2_vs_veh_up, P_T2_vs_veh_up=P_T2_vs_veh_up)
+ACP_T2_venn <- Venn(ACP_T2_venn)
+plot(ACP_T2_venn, type="circles", doWeights =TRUE)
+
+ACP_T2_venn_dn<- list(A_T2_vs_veh_dn=A_T2_vs_veh_dn, C_T2_vs_veh_dn=C_T2_vs_veh_dn, P_T2_vs_veh_dn=P_T2_vs_veh_dn)
+ACP_T2_venn_dn <- Venn(ACP_T2_venn_dn)
+plot(ACP_T2_venn_dn, type="circles", doWeights =TRUE)
+```
+
+```{r ACP_vacto}
+ACP_vacto_venn<- list(A_vacto_vs_veh_up=A_vacto_vs_veh_up, C_vacto_vs_veh_up=C_vacto_vs_veh_up, P_vacto_vs_veh_up=P_vacto_vs_veh_up)
+ACP_vacto_venn <- Venn(ACP_vacto_venn)
+plot(ACP_vacto_venn, type="circles", doWeights =TRUE)
+
+ACP_vacto_venn_dn<- list(A_vacto_vs_veh_dn=A_vacto_vs_veh_dn, C_vacto_vs_veh_dn=C_vacto_vs_veh_dn, P_vacto_vs_veh_dn=P_vacto_vs_veh_dn)
+ACP_vacto_venn_dn <- Venn(ACP_vacto_venn_dn)
+plot(ACP_vacto_venn_dn, type="circles", doWeights =TRUE)
+
+```
+
+
+```{r shared ACP T1 vs T2 up}
+
+shared_ACP_Tup <- list(ACP_T1_overlap_3=ACP_T1_overlap_3, ACP_T2_overlap_3=ACP_T2_overlap_3)
+shared_ACP_Tup_venn <- Venn(shared_ACP_Tup)
+plot(shared_ACP_Tup_venn, type="circles", doWeights =TRUE)
+
+```
+
+```{r shared ACP T1 vs T2 dn}
+
+shared_ACP_Tdn <- list(ACP_T1_overlap_dn_3=ACP_T1_overlap_dn_3, ACP_T2_overlap_dn_3=ACP_T2_overlap_dn_3)
+shared_ACP_Tdn_venn <- Venn(shared_ACP_Tdn)
+plot(shared_ACP_Tdn_venn, type="circles", doWeights =TRUE)
+
+```
+
+```{r shared_t1_up_vac_dn}
+shared_ACP_VT <- list(ACP_T1_overlap_3=ACP_T1_overlap_3, ACP_vacto_overlap_dn_3=ACP_vacto_overlap_3)
+shared_ACP_VT_venn <- Venn(shared_ACP_VT)
+plot(shared_ACP_VT_venn, type="circles", doWeights =TRUE)
+
+```
+
+
+
+## Vactosertib upset plot
+
+
+```{r}
+#make combination matrix for 4 cell lines TGFB2 up vs vehicle
+TACP_V_upset<- list(T_vacto_vs_veh_dn=T_vacto_vs_veh_dn, A_vacto_vs_veh_dn=A_vacto_vs_veh_dn, C_vacto_vs_veh_dn=C_vacto_vs_veh_dn, P_vacto_vs_veh_dn=P_vacto_vs_veh_dn)
+
+upset_matrix <- make_comb_mat(TACP_V_upset)
+set_name(upset_matrix)
+comb_name(upset_matrix)
+comb_degree(upset_matrix)
+
+comb_size(upset_matrix)
+```
+
+```{r upset vacto, fig.height=5, fig.width=7}
+UpSet(upset_matrix, set_order=c("T_vacto_vs_veh_dn", "A_vacto_vs_veh_dn", "C_vacto_vs_veh_dn", "P_vacto_vs_veh_dn"), comb_col = c("gray41", "lightblue","dodgerblue", "darkblue")[comb_degree(upset_matrix)])
+
+UpSet(upset_matrix, set_order=c("T_vacto_vs_veh_dn", "A_vacto_vs_veh_dn", "C_vacto_vs_veh_dn", "P_vacto_vs_veh_dn"), comb_order = order(comb_size(upset_matrix)), comb_col = c("gray41", "lightblue","dodgerblue", "darkblue")[comb_degree(upset_matrix)])
+
+ UpSet(upset_matrix[comb_degree(upset_matrix) >= 2], comb_col = c("gray41", "lightblue","dodgerblue", "darkblue")[comb_degree(upset_matrix)], comb_order = order(comb_size(upset_matrix[comb_degree(upset_matrix) >= 2])))
+```
+
+
+
+## TGFB2 upset plot
+
+
+```{r}
+#make combination matrix for 4 cell lines TGFB2 up vs vehicle
+TACP_T2_upset<- list(T_T2_vs_veh_up=T_T2_vs_veh_up, A_T2_vs_veh_up=A_T2_vs_veh_up, C_T2_vs_veh_up=C_T2_vs_veh_up, P_T2_vs_veh_up=P_T2_vs_veh_up)
+
+upset_matrix <- make_comb_mat(TACP_T2_upset)
+set_name(upset_matrix)
+comb_name(upset_matrix)
+comb_degree(upset_matrix)
+
+comb_size(upset_matrix)
+```
+
+```{r upset tgfb2, fig.height=5, fig.width=7}
+UpSet(upset_matrix, set_order=c("T_T2_vs_veh_up", "A_T2_vs_veh_up", "C_T2_vs_veh_up", "P_T2_vs_veh_up"), comb_col = c("gray41", "orange","red3", "red4")[comb_degree(upset_matrix)])
+
+UpSet(upset_matrix, set_order=c("T_T2_vs_veh_up", "A_T2_vs_veh_up", "C_T2_vs_veh_up", "P_T2_vs_veh_up"), comb_order = order(comb_size(upset_matrix)), comb_col = c("gray41", "orange","red3", "red4")[comb_degree(upset_matrix)])
+
+ UpSet(upset_matrix[comb_degree(upset_matrix) >= 2], comb_col = c("gray41", "orange","red3", "red4")[comb_degree(upset_matrix)], comb_order = order(comb_size(upset_matrix[comb_degree(upset_matrix) >= 2])))
+```
+
