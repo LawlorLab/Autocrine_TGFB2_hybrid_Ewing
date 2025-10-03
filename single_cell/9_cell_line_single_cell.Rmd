@@ -1,0 +1,394 @@
+---
+title: "9_cell_line_single_cell"
+output:
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+editor_options: 
+  chunk_output_type: inline
+---
+
+
+## Load packages
+
+```{r}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+```{r}
+library(here)
+here::i_am("src/9_cell_line_single_cell.Rmd")
+here()
+```
+
+```{r}
+library(here)
+library(ggplot2)
+library(dplyr)
+library(umap)
+library(RBGL)
+library(Vennerable)
+library(clusterProfiler)
+library(Seurat)
+library(SummarizedExperiment)
+library(SingleCellExperiment)
+library(sf)
+library(tidyverse)
+library(org.Hs.eg.db)
+library(escape)
+library(dittoSeq)
+library(SeuratObject)
+library(msigdbr)
+library(viridisLite)
+library(scCustomize)
+library(RColorBrewer)
+```
+
+## set figure outputs
+
+```{r}
+#Set figure outputs
+knitr::opts_chunk$set(dpi=600,
+                      echo=TRUE, warning=FALSE, message=FALSE)
+knitr::opts_chunk$set(dev.args=list(bg="transparent"))
+knitr::opts_chunk$set(fig.path = here("figs/s9", "25-10-2_s9_"),  dev = c("svglite", "png"))
+```
+
+## read seurat object
+
+```{r}
+s9 <- readRDS(here("working_data", "2022-6-3_aa_genename_cite_9.rds"))
+```
+
+# S9 caf like expression analysis
+
+```{r umap_s9, fig.height=6, fig.width=6}
+Idents(s9) <- "CellLine"
+DimPlot_scCustom(s9, colors_use = brewer.pal(9, "Spectral"))
+```
+
+## add relevant module scores
+
+```{r}
+caf_signature <- read.delim(file=here("gene_lists", "scseq_microarray_markers_plus_NT5E.txt"), header=FALSE)
+riggi_up <- read.delim(file=here("gene_lists", "RIGGI_UP.txt"), header=FALSE)
+riggi_dn <- read.delim(file=here("gene_lists", "RIGGI_DN.txt"), header=FALSE)
+```
+
+
+```{r}
+s9 <- AddModuleScore(s9, features=caf_signature, name="caf_signature")
+s9 <- AddModuleScore(s9, features=riggi_up, name="riggi_up")
+s9 <- AddModuleScore(s9, features=riggi_dn, name="riggi_dn")
+
+```
+
+
+```{r FigS1_caffeature, fig.height=6, fig.width=8}
+pal <- c("#FEC98DFF" ,"#FD9567FF", "#F1605DFF", "#CD4071FF" ,"#9F2F7FFF" ,"#721F81FF", "#451077FF")
+FeaturePlot_scCustom(s9, features="caf_signature1", colors_use =pal)
+```
+
+
+## 4-cell line panel subset
+
+```{r}
+TACP <- subset(x=s9, idents=c("TC71", "A673", "CHLA10", "PDX305"))
+```
+
+```{r Fig1_cafTACPvln, fig.height=6, fig.width=4}
+TACP$CellLine <- factor(TACP$CellLine, levels=c("TC71", "A673", "CHLA10", "PDX305"))
+VlnPlot_scCustom(TACP, features="caf_signature1", pt.size=0.5, group.by="CellLine", plot_boxplot=TRUE)
+```
+
+
+Fig1A/B gene ontology
+
+
+
+
+
+
+
+
+
+```{r FigS2_TGFBR2feature, fig.height=6, fig.width=6}
+pal <- c("#FEC98DFF" ,"#FD9567FF", "#F1605DFF", "#CD4071FF" ,"#9F2F7FFF" ,"#721F81FF", "#451077FF")
+FeaturePlot_scCustom(s9, features="TGFBR2", order=TRUE, colors_use=pal)
+
+
+```
+
+
+```{r FigS3_ligandfeature, fig.height=6, fig.width=6}
+pal <- c("#FEC98DFF" ,"#FD9567FF", "#F1605DFF", "#CD4071FF" ,"#9F2F7FFF" ,"#721F81FF", "#451077FF")
+FeaturePlot_scCustom(s9, features="TGFB1", order=TRUE, colors_use=pal)
+FeaturePlot_scCustom(s9, features="TGFB2", order=TRUE, colors_use=pal)
+
+```
+
+
+#TGFBR2 and TGFB2 tables by SCT and RNA
+
+```{r FigS2_tgfbr2_percents}
+#Fig S2A
+DefaultAssay(s9) <- "RNA"
+table(s9@meta.data$CellLine)
+TGFBR2pos <- subset(s9, TGFBR2>0)
+table(TGFBR2pos@meta.data$CellLine)
+
+DefaultAssay(s9) <- "SCT"
+table(s9@meta.data$CellLine)
+TGFBR2pos <- subset(s9, TGFBR2>0)
+table(TGFBR2pos@meta.data$CellLine)
+```
+
+```{r}
+DefaultAssay(s9) <- "RNA"
+table(s9@meta.data$CellLine)
+TGFB2pos <- subset(s9, TGFB2>0)
+table(TGFB2pos@meta.data$CellLine)
+
+DefaultAssay(s9) <- "SCT"
+table(s9@meta.data$CellLine)
+TGFB2pos <- subset(s9, TGFB2>0)
+table(TGFB2pos@meta.data$CellLine)
+```
+```{r}
+rm(TGFB2pos)
+rm(TGFBR2pos)
+```
+
+
+## subset CAF-like cells and find markers
+
+```{r caf_cutoff, fig.height=6, fig.width=3}
+#identify distribution of CAF-like signature
+caf_quantiles <- quantile(s9$caf_signature1, probs=seq(0, 1, 0.1))
+caf_quantiles
+caf_cutoff <- quantile(s9$caf_signature1, probs=0.7)
+caf_cutoff <- unname(caf_cutoff)
+caf_cutoff
+caf_median <- quantile(s9$caf_signature1, probs=0.5)
+caf_median
+VlnPlot_scCustom(s9, features="caf_signature1", pt.size=0, group.by="orig.ident")+geom_hline(yintercept=caf_cutoff, linetype="dashed", color="red", size=1.5)+geom_hline(yintercept=caf_median, linetype="solid", color="orange", size=1.5)
+
+```
+
+```{r}
+caf_like <- subset(x = s9, subset = caf_signature1 > caf_cutoff, slot='data')
+non_caf_like <- subset(x = s9, subset = caf_signature1 > caf_cutoff, slot='data', invert=TRUE)
+s9 <- SetIdent(s9, cells=Cells(caf_like), value='caf_like')
+s9 <- SetIdent(s9, cells=Cells(non_caf_like), value='non_caf_like')
+s9$caf_identity <- Idents(s9)
+
+```
+
+```{r S1_caf_prop}
+#% caf like each cell lines
+table(s9@meta.data$CellLine)
+
+Idents(s9) <- "caf_identity"
+table(s9@meta.data$CellLine, s9@meta.data$caf_identity)
+```
+
+
+
+```{r}
+s9_caf_markers <- FindMarkers(s9, ident.1="caf_like", ident.2 = "non_caf_like")
+```
+```{r}
+s9_caf_markers_sig_pos <- filter(s9_caf_markers, p_val_adj<=0.05, avg_log2FC>0)
+s9_caf_markers_sig_neg <- filter(s9_caf_markers, p_val_adj<=0.05, avg_log2FC<0)
+
+#export as table
+write.csv(s9_caf_markers, file=here("gene_lists", "s9_CAF_markers.csv"))
+write.csv(s9_caf_markers_sig_pos, file=here("gene_lists", "s9_CAF_markers_sig_pos.csv"))
+write.csv(s9_caf_markers_sig_neg, file=here("gene_lists", "s9_CAF_markers_sig_neg.csv"))
+
+```
+
+
+```{r Fig5C_liganddotplot, fig.height=4, fig.width=6}
+s9_caf_markers_TGFB <- filter(s9_caf_markers, rownames(s9_caf_markers) %in% c("TGFB1", "TGFB2", "TGFBR2"))
+s9_caf_markers_TGFB
+DotPlot_scCustom(s9, features=c("TGFB1", "TGFB2"), scale=FALSE, dot.scale=30, dot.min=0)
+```
+
+
+
+## gene ontology of CAF-like markers
+
+```{r}
+#sig up genes for ORA
+s9_up_markers <- read.csv(here("gene_lists", "s9_CAF_markers_sig_pos.csv"), row.names=1)
+s9_dn_markers <- read.csv(here("gene_lists", "s9_CAF_markers_sig_neg.csv"), row.names=1)
+
+s9_log_up <- filter(s9_up_markers, avg_log2FC > 2)
+s9_log_dn <- filter(s9_dn_markers, avg_log2FC < -2)
+
+
+s9_up_names <- rownames(s9_log_up)
+s9_dn_names <- rownames(s9_log_dn)
+
+```
+
+```{r Fig1_s9cafGO, fig.height=11, fig.width=8}
+go_s9_up<- enrichGO(gene=s9_up_names, OrgDb = org.Hs.eg.db, keyType = "SYMBOL", ont = "ALL", minGSSize = 10, pvalueCutoff = 1)
+head(go_s9_up)
+write.csv(go_s9_up, file=here("gene_lists", "go_s9_caf_up_allGO.csv"))
+dotplot(go_s9_up, showCategory=20)+ggtitle("s9_caf_up")
+```
+
+
+```{r caf_dn_dot, fig.height=11, fig.width=8}
+go_s9_dn<- enrichGO(gene=s9_dn_names, OrgDb = org.Hs.eg.db, keyType = "SYMBOL", ont = "ALL", minGSSize = 10, pvalueCutoff = 1)
+head(go_s9_dn)
+write.csv(go_s9_dn, file=here("gene_lists", "go_s9_caf_dn_allGO.csv"))
+dotplot(go_s9_dn, showCategory=20)+ggtitle("s9_caf_dn")
+```
+
+#S9 E::F activity state analysis
+
+
+```{r umap_s6, fig.height=6, fig.width=6}
+Idents(s9) <- "CellLine"
+
+subset6  <- subset(x=s9, idents = c("CHLA10", "TC32", "A673", "PDX305", "CHLA9", "A4573"))
+
+DimPlot_scCustom(subset6, label=FALSE)
+```
+
+
+```{r}
+riggi_up <- read.delim(file=here("gene_lists", "RIGGI_UP.txt"), header=FALSE)
+riggi_dn <- read.delim(file=here("gene_lists", "RIGGI_DN.txt"), header=FALSE)
+
+subset6 <- AddModuleScore(subset6, features=riggi_up, name="riggi_up")
+subset6 <- AddModuleScore(subset6, features=riggi_dn, name="riggi_dn")
+subset6 <- AddModuleScore(subset6, features=caf_signature, name="caf_signature6")
+```
+
+#re-umap with cell cycle regression 6 lines
+```{r}
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+
+subset6 <- CellCycleScoring(subset6, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+
+```
+
+```{r}
+subset6 <- ScaleData(subset6, vars.to.regress = c("S.Score", "G2M.Score"), features = rownames(subset6))
+
+subset6 <- RunPCA(subset6, features = VariableFeatures(subset6), nfeatures.print = 10)
+ElbowPlot(subset6)
+```
+
+```{r cellcycle_reg}
+subset6 <- RunUMAP(subset6, dims = 1:15, reduction.key="UMAPcc_", reduction.name="umapcc")
+
+
+DimPlot(subset6, reduction = "SCT_UMAP")
+DimPlot(subset6, reduction = "umapcc")
+
+Idents(subset6) <- "CellLine"
+
+DimPlot(subset6, reduction = "SCT_UMAP", label=TRUE)
+DimPlot(subset6, reduction = "umapcc", label=TRUE)
+```
+
+
+## subset state identities
+
+```{r s6_cutoffs, fig.height=6, fig.width=3}
+#identify distribution of CAF-like signature
+rup_quantiles <- quantile(subset6$riggi_up1, probs=seq(0, 1, 0.1))
+rup_quantiles
+rup_cutoff <- quantile(subset6$riggi_up1, probs=0.5)
+rup_cutoff <- unname(rup_cutoff)
+rup_cutoff
+rup_median <- quantile(subset6$riggi_up1, probs=0.5)
+rup_median
+VlnPlot_scCustom(subset6, features="riggi_up1", pt.size=0, group.by="orig.ident")+geom_hline(yintercept=rup_cutoff, linetype="dashed", color="red", size=1.5)+geom_hline(yintercept=rup_median, linetype="solid", color="orange", size=1.5)
+
+#identify distribution of CAF-like signature
+rdn_quantiles <- quantile(subset6$riggi_dn1, probs=seq(0, 1, 0.1))
+rdn_quantiles
+rdn_cutoff <- quantile(subset6$riggi_dn1, probs=0.5)
+rdn_cutoff <- unname(rdn_cutoff)
+rdn_cutoff
+rdn_median <- quantile(subset6$riggi_dn1, probs=0.5)
+rdn_median
+
+VlnPlot_scCustom(subset6, features="riggi_dn1", pt.size=0, group.by="orig.ident")+geom_hline(yintercept=rdn_cutoff, linetype="dashed", color="red", size=1.5)+geom_hline(yintercept=rdn_median, linetype="solid", color="orange", size=1.5)
+
+
+riggi_up_hi <- subset(x = subset6, subset = riggi_up1 > rup_cutoff, slot='data')
+riggi_up_lo <- subset(x = subset6, subset = riggi_up1 > rup_cutoff, slot='data', invert=TRUE)
+subset6 <- SetIdent(subset6, cells=Cells(riggi_up_hi), value='riggi_up_hi')
+subset6 <- SetIdent(subset6, cells=Cells(riggi_up_lo), value='riggi_up_lo')
+subset6$riggi_up_identity <- Idents(subset6)
+
+riggi_dn_hi <- subset(x = subset6, subset = riggi_dn1 > rdn_cutoff, slot='data')
+riggi_dn_lo <- subset(x = subset6, subset = riggi_dn1 > rdn_cutoff, slot='data', invert=TRUE)
+subset6 <- SetIdent(subset6, cells=Cells(riggi_dn_hi), value='riggi_dn_hi')
+subset6 <- SetIdent(subset6, cells=Cells(riggi_dn_lo), value='riggi_dn_lo')
+subset6$riggi_dn_identity <- Idents(subset6)
+
+```
+
+```{r s6_riggi_dimplot}
+DimPlot_scCustom(subset6, group.by="riggi_up_identity", reduction="umapcc")
+DimPlot_scCustom(subset6, group.by="riggi_dn_identity", reduction="umapcc")
+
+```
+```{r s6_ef_identity}
+hybrid<- subset(x = subset6, subset = riggi_up_identity  == "riggi_up_hi" & riggi_dn_identity == "riggi_dn_hi", slot='data')
+true_low<- subset(x = subset6, subset = riggi_up_identity  == "riggi_up_lo" & riggi_dn_identity == "riggi_dn_hi", slot='data')
+true_hi<- subset(x = subset6, subset = riggi_up_identity  == "riggi_up_hi" & riggi_dn_identity == "riggi_dn_lo", slot='data')
+low_hybrid<- subset(x = subset6, subset = riggi_up_identity  == "riggi_up_lo" & riggi_dn_identity == "riggi_dn_lo", slot='data')
+
+subset6 <- SetIdent(subset6, cells=Cells(hybrid), value='hybrid')
+subset6 <- SetIdent(subset6, cells=Cells(true_low), value='true_low')
+subset6 <- SetIdent(subset6, cells=Cells(true_hi), value='bulk')
+subset6 <- SetIdent(subset6, cells=Cells(low_hybrid), value='bulk')
+subset6$ef_state_identity <- Idents(subset6)
+
+DimPlot_scCustom(subset6, colors_use = c("lightblue", "pink", "red"), label=FALSE)
+```
+
+
+```{r Fig3_ef_state_s6}
+Idents(subset6) <- "CellLine"
+DimPlot_scCustom(subset6, group.by = "CellLine", reduction="umapcc", colors_use = cividis(6))
+
+FeaturePlot_scCustom(subset6, features="TGFBR2", order=TRUE, colors_use=pal, reduction="umapcc", pt.size=0.5, label=TRUE)
+FeaturePlot_scCustom(subset6, features="TGFB2", order=FALSE, reduction="umapcc", pt.size=0.5)
+
+DimPlot_scCustom(subset6, colors_use = c("lightblue", "orangered", "coral4"), label=FALSE, reduction="umapcc", pt.size=0.5, group.by="ef_state_identity")
+
+# ef_table <-  table(subset6@meta.data$CellLine, subset6@meta.data$ef_state_identity)
+# write.csv(ef_table, file="ef_table_by_cell_line.csv")
+```
+
+
+```{r Fig3C_S2_ef_state_targets}
+DotPlot_scCustom(subset6, features="TGFBR2", scale.min=0, dot.scale=20, scale=FALSE, colors_use=inferno(100), group.by="ef_state_identity")
+DotPlot_scCustom(subset6, features=c("STEAP2", "SOX2", "NKX2-2", "NT5E", "RGS5", "COL1A2"), scale.min=0, dot.scale=20, scale=TRUE, colors_use=inferno(100), group.by="ef_state_identity")
+```
+
+
+```{r FigS2_ef_state_byline}
+Idents(subset6) <- "CellLine"
+dittoBarPlot(subset6, "ef_state_identity", group.by="CellLine", x.reorder=c(1,2,3,6,4,5))
+dittoBarPlot(subset6, "ef_state_identity", group.by="caf_identity")
+dittoBarPlot(subset6, "caf_identity", group.by="ef_state_identity")
+
+DotPlot_scCustom(subset6, features="TGFBR2", scale.min=0, dot.scale=20, scale=FALSE, colors_use=inferno(100), group.by="ef_state_identity", idents="A673") + ggtitle("A673")
+DotPlot_scCustom(subset6, features="TGFBR2", scale.min=0, dot.scale=20, scale=FALSE, colors_use=inferno(100), group.by="ef_state_identity", idents="A4573") + ggtitle("A4573")
+DotPlot_scCustom(subset6, features="TGFBR2", scale.min=0, dot.scale=20, scale=FALSE, colors_use=inferno(100), group.by="ef_state_identity", idents="CHLA9") + ggtitle("CHLA9")
+DotPlot_scCustom(subset6, features="TGFBR2", scale.min=0, dot.scale=20, scale=FALSE, colors_use=inferno(100), group.by="ef_state_identity", idents="CHLA10") + ggtitle("CHLA10")
+DotPlot_scCustom(subset6, features="TGFBR2", scale.min=0, dot.scale=20, scale=FALSE, colors_use=inferno(100), group.by="ef_state_identity", idents="TC32") + ggtitle("TC32")
+DotPlot_scCustom(subset6, features="TGFBR2", scale.min=0, dot.scale=20, scale=FALSE, colors_use=inferno(100), group.by="ef_state_identity", idents="PDX305") + ggtitle("PDX305")
+```

@@ -1,0 +1,184 @@
+---
+title: "pdx_aynaud_cell"
+output:
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+editor_options: 
+  chunk_output_type: inline
+---
+
+
+## Load packages
+
+```{r}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+```{r}
+library(here)
+here::i_am("src/pdx_aynaud_single_cell.Rmd")
+here()
+```
+
+```{r}
+library(here)
+library(ggplot2)
+library(dplyr)
+library(umap)
+library(RBGL)
+library(Vennerable)
+library(clusterProfiler)
+library(Seurat)
+library(SummarizedExperiment)
+library(SingleCellExperiment)
+library(sf)
+library(tidyverse)
+library(org.Hs.eg.db)
+library(escape)
+library(dittoSeq)
+library(SeuratObject)
+library(msigdbr)
+library(viridisLite)
+library(scCustomize)
+library(RColorBrewer)
+```
+
+## set figure outputs
+
+```{r}
+#Set figure outputs
+knitr::opts_chunk$set(dpi=600,
+                      echo=TRUE, warning=FALSE, message=FALSE)
+knitr::opts_chunk$set(dev.args=list(bg="transparent"))
+knitr::opts_chunk$set(fig.path = here("figs/pdx", "25-10-2_pdx_"),  dev = c("svglite", "png"))
+```
+
+## read seurat object
+
+```{r}
+pdx <- readRDS(here("working_data", "101321_pdx_ews_seurat.rds"))
+```
+
+# pdx caf like expression analysis
+
+```{r umap_pdx, fig.height=6, fig.width=6}
+Idents(pdx) <- "cell_line"
+DimPlot_scCustom(pdx, colors_use = brewer.pal(6, "Spectral"))
+```
+
+## add relevant module scores
+
+```{r}
+caf_signature <- read.delim(file=here("gene_lists", "scseq_microarray_markers_plus_NT5E.txt"), header=FALSE)
+riggi_up <- read.delim(file=here("gene_lists", "RIGGI_UP.txt"), header=FALSE)
+riggi_dn <- read.delim(file=here("gene_lists", "RIGGI_DN.txt"), header=FALSE)
+```
+
+
+```{r}
+pdx <- AddModuleScore(pdx, features=caf_signature, name="caf_signature")
+pdx <- AddModuleScore(pdx, features=riggi_up, name="riggi_up")
+pdx <- AddModuleScore(pdx, features=riggi_dn, name="riggi_dn")
+
+```
+
+
+```{r FigS1A_caffeature, fig.height=6, fig.width=8}
+pal <- c("#FEC98DFF" ,"#FD9567FF", "#F1605DFF", "#CD4071FF" ,"#9F2F7FFF" ,"#721F81FF", "#451077FF")
+FeaturePlot_scCustom(pdx, features="caf_signature1", colors_use =pal)
+```
+
+
+
+
+```{r FigS2A_TGFBR2feature, fig.height=6, fig.width=6}
+pal <- c("#FEC98DFF" ,"#FD9567FF", "#F1605DFF", "#CD4071FF" ,"#9F2F7FFF" ,"#721F81FF", "#451077FF")
+FeaturePlot_scCustom(pdx, features="TGFBR2", order=TRUE, colors_use=pal)
+
+
+```
+
+
+```{r FigS3BC_ligandfeature, fig.height=6, fig.width=6}
+pal <- c("#FEC98DFF" ,"#FD9567FF", "#F1605DFF", "#CD4071FF" ,"#9F2F7FFF" ,"#721F81FF", "#451077FF")
+FeaturePlot_scCustom(pdx, features="TGFB1", order=TRUE, colors_use=pal)
+FeaturePlot_scCustom(pdx, features="TGFB2", order=TRUE, colors_use=pal)
+
+```
+
+
+
+## subset CAF-like cells and find markers
+
+```{r caf_cutoff, fig.height=6, fig.width=3}
+#identify distribution of CAF-like signature
+caf_quantiles <- quantile(pdx$caf_signature1, probs=seq(0, 1, 0.1))
+caf_quantiles
+caf_cutoff <- quantile(pdx$caf_signature1, probs=0.7)
+caf_cutoff <- unname(caf_cutoff)
+caf_cutoff
+caf_median <- quantile(pdx$caf_signature1, probs=0.5)
+caf_median
+VlnPlot_scCustom(pdx, features="caf_signature1", pt.size=0, group.by="orig.ident")+geom_hline(yintercept=caf_cutoff, linetype="dashed", color="red", size=1.5)+geom_hline(yintercept=caf_median, linetype="solid", color="orange", size=1.5)
+
+```
+
+```{r}
+caf_like <- subset(x = pdx, subset = caf_signature1 > caf_cutoff, slot='data')
+non_caf_like <- subset(x = pdx, subset = caf_signature1 > caf_cutoff, slot='data', invert=TRUE)
+pdx <- SetIdent(pdx, cells=Cells(caf_like), value='caf_like')
+pdx <- SetIdent(pdx, cells=Cells(non_caf_like), value='non_caf_like')
+pdx$caf_identity <- Idents(pdx)
+
+```
+
+```{r S1_pdx_caf_prop}
+#% caf like each cell lines
+table(pdx@meta.data$cell_line)
+
+Idents(pdx) <- "caf_identity"
+table(pdx@meta.data$cell_line, pdx@meta.data$caf_identity)
+```
+
+```{r}
+pdx_caf_markers <- FindMarkers(pdx, ident.1="caf_like", ident.2 = "non_caf_like")
+```
+
+
+```{r}
+pdx_caf_markers_sig_pos <- filter(pdx_caf_markers, p_val_adj<=0.05, avg_log2FC>0)
+pdx_caf_markers_sig_neg <- filter(pdx_caf_markers, p_val_adj<=0.05, avg_log2FC<0)
+
+#export as table
+write.csv(pdx_caf_markers, file=here("gene_lists", "pdx_CAF_markers.csv"))
+write.csv(pdx_caf_markers_sig_pos, file=here("gene_lists", "pdx_CAF_markers_sig_pos.csv"))
+write.csv(pdx_caf_markers_sig_neg, file=here("gene_lists", "pdx_CAF_markers_sig_neg.csv"))
+
+```
+
+## gene ontology of CAF-like markers
+
+```{r}
+#sig up genes for ORA
+pdx_up_markers <- read.csv(here("gene_lists", "pdx_CAF_markers_sig_pos.csv"), row.names=1)
+pdx_dn_markers <- read.csv(here("gene_lists", "pdx_CAF_markers_sig_neg.csv"), row.names=1)
+
+pdx_log_up <- filter(pdx_up_markers, avg_log2FC > 3)
+pdx_log_dn <- filter(pdx_dn_markers, avg_log2FC < -3)
+
+
+pdx_up_names <- rownames(pdx_log_up)
+pdx_dn_names <- rownames(pdx_log_dn)
+
+```
+
+```{r Fig1A_pdxcafGO, fig.height=11, fig.width=8}
+go_pdx_up<- enrichGO(gene=pdx_up_names, OrgDb = org.Hs.eg.db, keyType = "SYMBOL", ont = "ALL", minGSSize = 1, pvalueCutoff = 1)
+head(go_pdx_up,30)
+write.csv(go_pdx_up, file=here("gene_lists", "go_pdx_caf_up_allGO.csv"))
+dotplot(go_pdx_up, showCategory=30)+ggtitle("pdx_caf_up")
+```
+
+
+
