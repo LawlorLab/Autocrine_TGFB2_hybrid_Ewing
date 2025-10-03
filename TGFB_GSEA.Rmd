@@ -48,7 +48,7 @@ setwd(here())
 
 
 ```{r load EF lists}
-## loading EWS::FLI1 gene sets. This uses Neerja's code for reading a custom GMT file she made. Also below in the ECM section there is an easier way to read an excel CSV that you have put your own custom gene lists into
+## loading EWS::FLI1 gene sets. This reads custom GMT file of EWS::FLI1 regulated gene sets. 
 
 read.gmt = function(file){  if(!grepl("\\.gmt$",file)[1]){stop("Pathway information must be a .gmt file")}
 geneSetDB = readLines(file) ##read in the gmt file as a vector of lines
