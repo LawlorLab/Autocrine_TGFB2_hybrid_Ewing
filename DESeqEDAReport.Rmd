@@ -7,7 +7,7 @@ output:
     theme: cayman
     highlight: github
 params:
-  root_dir: "/Volumes/Active/lawlor_e/Emma/TGFB_FIGURES/R_code/CLEAN_CODE_BULK/deseq_bulk_tgfb/star"
+  root_dir: 
   output_dir: "results/"
   saveRes: FALSE
 editor_options: 
