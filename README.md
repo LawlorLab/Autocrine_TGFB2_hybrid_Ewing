@@ -1,0 +1,1 @@
+This repo contains R code used to generate figures for "Autocrine TGFβ2 enforces a transcriptionally hybrid cell state in Ewing sarcoma" Wrenn et al. 2025. Raw sequencing data needed for these analyses can be found at GSE226562, GSE236284, GSE130025.
